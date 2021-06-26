@@ -13,10 +13,10 @@
 -record(state,{
         participant = #participant{},
         entity = #endPoint{},
-        datawrite_period= 1000,
-        heatbeat_period= 1000,
+        datawrite_period= 1000, % default at 1000
+        heatbeat_period= 1000, % default at 1000
         heatbeat_count= 1,
-        nackResponseDelay= 200,
+        nackResponseDelay= 200, % default at 200
         nackSuppressionDuration= 0,
         push_mode = false,
         history_cache,
@@ -29,9 +29,9 @@ create({Participant,WriterConfig, Cache}) -> gen_server:start_link(?MODULE, {Par
 new_change(Pid,Data) -> gen_server:call(Pid,{new_change,Data}).
 on_change_available(Pid, ChangeKey) -> gen_server:cast(Pid, {on_change_available, ChangeKey}).
 %Adds new locators if missing, removes old locators not specified in the call.
-update_matched_readers(Pid, RL) -> gen_server:cast(Pid, {update_matched_readers, RL}).
-matched_reader_add(Pid,Locator) -> gen_server:cast(Pid, {matched_reader_add,Locator}).
-matched_reader_remove(Pid,Locator)-> gen_server:cast(Pid, {matched_reader_remove,Locator}).
+update_matched_readers(Pid, R) -> gen_server:cast(Pid, {update_matched_readers, R}).
+matched_reader_add(Pid, R) -> gen_server:cast(Pid, {matched_reader_add, R}).
+matched_reader_remove(Pid, R)-> gen_server:cast(Pid, {matched_reader_remove, R}).
 is_acked_by_all(Pid) -> gen_server:call(Pid, is_acked_by_all).
 receive_acknack(Pid, Acknack) -> gen_server:cast(Pid, {receive_acknack, Acknack}).
 get_cache(Pid) -> gen_server:call(Pid,get_cache).
@@ -108,13 +108,13 @@ send_requested_changes(Prefix,RP) -> send_requested_changes(Prefix,RP,[]).
 send_requested_changes(Prefix,[],Sent) -> Sent;
 send_requested_changes(Prefix,[#reader_proxy{requested_changes=[]}=P|TL], Sent) -> 
         send_requested_changes(Prefix, TL, Sent ++ [P] );
-send_requested_changes(Prefix,[#reader_proxy{unicastLocatorList=[L|_], requested_changes=RC}=P|TL], Sent) -> 
+send_requested_changes(Prefix,[#reader_proxy{guid=#guId{entityId=RID},unicastLocatorList=[L|_], requested_changes=RC}=P|TL], Sent) -> 
         [G|_] = pg:get_members(rtps_gateway),
-        SUB_MSG = [rtps_messages:serialize_info_timestamp()] ++ [ rtps_messages:serialize_data(C) || C <- RC ],
+        SUB_MSG = [rtps_messages:serialize_info_timestamp()] ++ [ rtps_messages:serialize_data(RID,C) || C <- RC ],
         Msg = rtps_messages:build_message(Prefix, SUB_MSG),
         rtps_gateway:send(G,{ Msg,{L#locator.ip, L#locator.port}}),
         send_requested_changes(Prefix, TL, Sent ++ [P#reader_proxy{requested_changes=[]}]).
-write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}},datawrite_period=P,reader_proxies=RP} = S) -> 
+write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}},datawrite_period=P,reader_proxies=RP} = S) ->
         erlang:send_after(P, self(), write_loop),
         S#state{reader_proxies = send_requested_changes(Prefix,RP)}.
 
@@ -131,7 +131,10 @@ h_update_matched_readers(Proxies,#state{reader_proxies=RP, history_cache=C} = S)
         % add cache changes to the unsent list for the new added locators
         Changes = rtps_history_cache:get_all_changes(C),
         S#state{reader_proxies= ProxyStillValid ++ reset_reader_proxies(Changes,NewProxies)}.
-h_matched_reader_add(Proxy,#state{reader_proxies=RP} = S) -> S#state{reader_proxies=RP++[Proxy]}.
+
+h_matched_reader_add(Proxy,#state{reader_proxies=RP, history_cache=C} = S) -> 
+        Changes = rtps_history_cache:get_all_changes(C),
+        S#state{reader_proxies=RP++reset_reader_proxies(Changes,[Proxy])}.
 
 h_matched_reader_remove(Guid,#state{reader_proxies=RP} = S) -> 
         S#state{reader_proxies=[ P || #reader_proxy{guid=G}=P <- RP, G /= Guid]}.

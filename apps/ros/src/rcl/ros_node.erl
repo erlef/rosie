@@ -1,5 +1,5 @@
 -module(ros_node).
--export([create/1,create_subscription/3,execute_all_jobs/1]).
+-export([create/1,get_name/1,create_subscription/3,create_publisher/2,execute_all_jobs/1]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
@@ -14,7 +14,9 @@
                 job_list = []}).
 
 create(Name) -> gen_server:start_link(?MODULE, Name, []).
+get_name(Pid) -> gen_server:call(Pid,get_name).
 create_subscription(Pid,Topic,Callback) -> gen_server:call(Pid,{create_subscription,Topic,Callback}).
+create_publisher(Pid,Topic) -> gen_server:call(Pid,{create_publisher,Topic}).
 execute_all_jobs(Pid) -> gen_server:call(Pid, execute_all_jobs).
 
 %callbacks
@@ -35,7 +37,10 @@ init(Name) ->
 
 handle_call({create_subscription,Topic, Callback},_,S) -> 
         {reply,h_create_subscription(put_topic_prefix(Topic),Callback,S),S};
+handle_call({create_publisher,Topic},_,S) -> 
+        {reply,h_create_publisher(put_topic_prefix(Topic),S),S};
 handle_call(execute_all_jobs,_,S) -> {reply,ok,h_execute_all_jobs(S)};
+handle_call(get_name,_,#state{name=N}=S) -> {reply,N,S};
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast(_,S) -> {noreply,S}.
 
@@ -53,6 +58,10 @@ h_create_subscription(Topic,Callback,#state{dds_domain_participant=DP}) ->
         DR = dds_subscriber:create_datareader(SUB, Topic),
         {ok,Listener} = ros_msg_listener:start_link(Callback),
         dds_data_r:set_listener(DR, {Listener, ros_msg_listener}).
+
+h_create_publisher(Topic,#state{dds_domain_participant=DP}) ->
+        {ok,Pub} = ros_publisher:create(self(),DP,Topic),
+        Pub.
 
 sub_to_discovery(#state{name=Name, dds_domain_participant=DP}=S) -> 
         % Subscribe to the ros discovery topic

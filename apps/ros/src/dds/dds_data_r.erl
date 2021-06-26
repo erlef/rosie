@@ -8,7 +8,7 @@
 -include("../protocol/rtps_structure.hrl").
 -include("../protocol/rtps_constants.hrl").
 
--record(state,{subscriber, topic, listener = not_set, rtps_reader, history_cache}).
+-record(state,{topic, listener = not_set, rtps_reader, history_cache}).
 
 start_link(Setup) -> gen_server:start_link( ?MODULE, Setup,[]).
 on_change_available(Pid, ChangeKey) -> gen_server:cast(Pid, {on_change_available, ChangeKey}).
@@ -18,7 +18,7 @@ match_remote_writers(Pid, Writers) -> gen_server:cast(Pid,{match_remote_writers,
 
 
 %callbacks 
-init({Topic,#participant{guid=ID},SUBSCRIBER, EntityID}) ->  
+init({Topic,#participant{guid=ID}, EntityID}) ->  
         ReaderConfig = #endPoint{
                 guid = #guId{ prefix = ID#guId.prefix, entityId = EntityID},
                 reliabilityLevel = reliable,
@@ -30,7 +30,7 @@ init({Topic,#participant{guid=ID},SUBSCRIBER, EntityID}) ->
         rtps_history_cache:set_listener(Cache, {self(),?MODULE}),
         [P|_] = pg:get_members(ID),
         R = rtps_participant:create_full_reader(P,ReaderConfig,Cache),
-        {ok,#state{topic=Topic, rtps_reader=R, history_cache=Cache, subscriber = SUBSCRIBER}}.
+        {ok,#state{topic=Topic, rtps_reader=R, history_cache=Cache}}.
 
 handle_call({read, ChangeKey}, _, #state{history_cache=C}=S) -> {reply,rtps_history_cache:get_change(C,ChangeKey),S};
 handle_call(_, _, State) -> {reply,ok,State}.

@@ -14,6 +14,7 @@
         rtps_participant_info=#participant{},
         subscription_publisher,
         builtin_pub_detector,
+        builtin_sub_detector,
         data_readers = [],
         incremental_key=1}).
 
@@ -25,17 +26,21 @@ on_data_available(Pid,{R,ChangeKey}) -> gen_server:cast(Pid, {on_data_available,
 %callbacks 
 init({DP, P_info}) ->  
         % The publication-reader(aka detector) will listen to which topics the other participants want to publish
-        EntityID = ?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_DETECTOR,        
-        {ok,DR} = dds_data_r:start_link({dds_pub_detector,P_info,self(),EntityID}),
-        % i must set up a listener for the data reader, it should be this module.
-        dds_data_r:set_listener(DR, {self(), ?MODULE}),
-        {ok,#state{domain_participant=DP, rtps_participant_info=P_info, builtin_pub_detector = DR}}.
+        EntityID_p = ?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_DETECTOR,        
+        {ok,DR_P} = dds_data_r:start_link({dds_pub_detector,P_info,EntityID_p}),
+        dds_data_r:set_listener(DR_P, {self(), ?MODULE}),
+        % The subscription-reader(aka detector) will listen to which topics the other participants want to subscribe
+        EntityID_s = ?ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_DETECTOR,        
+        {ok,DR_S} = dds_data_r:start_link({dds_sub_detector,P_info,EntityID_s}),
+        
+        {ok,#state{domain_participant=DP, rtps_participant_info=P_info,
+                 builtin_pub_detector = DR_P, builtin_sub_detector = DR_S}}.
 
 handle_call({create_datareader,Topic}, _, #state{domain_participant=DP,rtps_participant_info=I,
                 subscription_publisher = Sub_p, data_readers = Readers, incremental_key = K}=S) ->        
         % Endpoint creation
         EntityID = #entityId{kind=?EKIND_USER_Reader_NO_Key,key = <<K:24>>},
-        {ok,DR} = dds_data_r:start_link({Topic,I,self(),EntityID}),
+        {ok,DR} = dds_data_r:start_link({Topic,I,EntityID}),
         % Endpoint subscription
         SubAnnouncer = dds_publisher:lookup_datawriter(Sub_p,builtin_sub_announcer),
         dds_data_w:write(SubAnnouncer, produce_sedp_disc_enpoint_data(I, Topic, EntityID)),
@@ -43,6 +48,8 @@ handle_call({create_datareader,Topic}, _, #state{domain_participant=DP,rtps_part
 
 handle_call({lookup_datareader, builtin_pub_detector}, _, State) -> 
         {reply,State#state.builtin_pub_detector,State};
+handle_call({lookup_datareader, builtin_sub_detector}, _, State) -> 
+        {reply,State#state.builtin_sub_detector,State};
 handle_call({lookup_datareader, Topic}, _, #state{data_readers=DR}=State) -> 
         [R|_] = [ Pid || {ID,T,Pid} <- DR, T==Topic ],
         {reply, R, State};

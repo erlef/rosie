@@ -53,7 +53,6 @@
         count
 }).
 
-
 -record(reader_proxy,{
         guid,
         expectsInlineQos = false,
@@ -149,15 +148,12 @@
 
 
 % sub-messages
--record(dataSubMsg,{
-        status_info,
-        readerId,
-        writerId,
-        keyHashPrefix,
-        keyHashSuffix,
-        writerSeqNum,
-        inlineQos=[],
-        serializedData
-}).
+% -record(msg_data,{
+%         dst_reader_id=#entityId{},
+%         keyHashPrefix,
+%         keyHashSuffix,
+%         inlineQos=[],
+%         serializedData
+% }).
 
 -endif.

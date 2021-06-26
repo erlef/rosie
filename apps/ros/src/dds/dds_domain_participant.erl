@@ -35,8 +35,8 @@ init(S) ->
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_ANNOUNCER + 
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_DETECTOR +
                 ?DISC_BUILTIN_ENDPOINT_SUBSCRIPTIONS_ANNOUNCER+
-                %?DISC_BUILTIN_ENDPOINT_SUBSCRIPTIONS_DETECTOR+   
-                %?DISC_BUILTIN_ENDPOINT_PUBLICATIONS_ANNOUNCER+ 
+                ?DISC_BUILTIN_ENDPOINT_SUBSCRIPTIONS_DETECTOR+   
+                ?DISC_BUILTIN_ENDPOINT_PUBLICATIONS_ANNOUNCER+ 
                 ?DISC_BUILTIN_ENDPOINT_PUBLICATIONS_DETECTOR),
         P_Info = rtps_participant:get_info(P),
 
@@ -45,7 +45,12 @@ init(S) ->
         {ok,DP} = dds_publisher:start_link({self(), P_Info}), % holds data_writers
         {ok,DS} = dds_subscriber:start_link({self(), P_Info}), % holds data_readers
 
+        % The subscriber needs the publisher to write subscriptions
         dds_subscriber:set_subscription_publisher(DS,DP),
+        % The publisher needs the subscriber to listen to subscriptions
+        % THIS triggers the publisher adding itself as listener 
+        % of the subscription detector held by the subscriber
+        dds_publisher:set_publication_subscriber(DP,DS),
 
         rtps_participant:start_discovery(P),
         {ok,S#state{rtps_participant_pid=P, rtps_participant_info=P_Info, default_publisher=DP, default_subscriber=DS}}.
@@ -81,17 +86,36 @@ h_update_participants_list(PL,#state{default_subscriber = DS, default_publisher=
                         #spdp_disc_part_data{guidPrefix=P,meta_uni_locator_l=U,meta_multi_locator_l=M} <- Sub_Detectors],
         DW = dds_publisher:lookup_datawriter(DP, builtin_sub_announcer),
         dds_data_w:match_remote_readers(DW, MatchedReaders),
+
+        Pub_Detectors = filter_participants_with(PL,?DISC_BUILTIN_ENDPOINT_PUBLICATIONS_DETECTOR),
+        MatchedReaders_2 = [ #reader_proxy{
+                                guid=#guId{prefix=P,entityId=?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_DETECTOR},
+                                unicastLocatorList=U,
+                                multicastLocatorList=M} || 
+                        #spdp_disc_part_data{guidPrefix=P,meta_uni_locator_l=U,meta_multi_locator_l=M} <- Pub_Detectors],
+        DW2 = dds_publisher:lookup_datawriter(DP, builtin_pub_announcer),
+        dds_data_w:match_remote_readers(DW2, MatchedReaders_2),
         
         
         Pub_Annoucers = filter_participants_with(PL,?DISC_BUILTIN_ENDPOINT_PUBLICATIONS_ANNOUNCER),
-        MatchedWriters = [ #writer_proxy{
+        MatchedWriters_P = [ #writer_proxy{
                                 guid=#guId{prefix=P,entityId=?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_ANNOUNCER},
                                 unicastLocatorList=U,
                                 multicastLocatorList=M} || 
                         #spdp_disc_part_data{guidPrefix=P,meta_uni_locator_l=U,meta_multi_locator_l=M} <- Pub_Annoucers],
         %io:format("Subscriver is: ~p\n",[DS]),
-        DR = dds_subscriber:lookup_datareader(DS, builtin_pub_detector),
-        dds_data_r:match_remote_writers(DR, MatchedWriters),
+        DR_P = dds_subscriber:lookup_datareader(DS, builtin_pub_detector),
+        dds_data_r:match_remote_writers(DR_P, MatchedWriters_P),
+
+        Sub_Annoucers = filter_participants_with(PL,?DISC_BUILTIN_ENDPOINT_SUBSCRIPTIONS_ANNOUNCER),
+        MatchedWriters_S = [ #writer_proxy{
+                                guid=#guId{prefix=P,entityId=?ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_ANNOUNCER},
+                                unicastLocatorList=U,
+                                multicastLocatorList=M} || 
+                        #spdp_disc_part_data{guidPrefix=P,meta_uni_locator_l=U,meta_multi_locator_l=M} <- Sub_Annoucers],
+        %io:format("Sub announcer is is: ~p\n",[MatchedWriters_S]),
+        DR_S = dds_subscriber:lookup_datareader(DS, builtin_sub_detector),
+        dds_data_r:match_remote_writers(DR_S, MatchedWriters_S),
 
         % update the list of participants
         S#state{known_participants=PL}.

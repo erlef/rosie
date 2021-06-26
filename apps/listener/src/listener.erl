@@ -13,12 +13,12 @@
 
 
 start_link() -> gen_server:start_link(?MODULE, [], []).
-receive_chat(Msg) -> io:format("~s\n",[Msg]).
+receive_chat(Msg) -> io:format("ROSIE: [listener]: I heard: ~s\n",[Msg]).
 
 init(S) -> 
         rcl:start_link(),
 
-        {ok, Node} = ros_node:create("/listener"),
+        {ok, Node} = ros_node:create("listener"),
         
         ChatterTopic = #user_topic{type_name=?msg_string_topic_type , name="chatter"},
         ros_node:create_subscription(Node, ChatterTopic, fun receive_chat/1),

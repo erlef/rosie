@@ -7,7 +7,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include("rtps_structure.hrl").
-%-include("rtps_constants.hrl").
+-include("rtps_constants.hrl").
 
 -record(state,{
         participant = #participant{},
@@ -63,7 +63,7 @@ send_locators_changes(#state{participant=P,entity=E}=S,[#reader_locator{locator=
         %io:format("~p\n",[Prefix]),
         %case Prefix of undefined -> DST=[]; _ -> DST = [rtps_messages:serialize_info_dst(Prefix)] end,
         SUB_MSG_LIST =  [rtps_messages:serialize_info_timestamp()]++
-                        [rtps_messages:serialize_data(C) || C  <- Changes],
+                        [rtps_messages:serialize_data(?ENTITYID_UNKNOWN,C) || C  <- Changes],
         Datagram = rtps_messages:build_message(P#participant.guid#guId.prefix, SUB_MSG_LIST),
         [G|_] = pg:get_members(rtps_gateway),
         rtps_gateway:send(G, {Datagram,{L#locator.ip,L#locator.port}}),

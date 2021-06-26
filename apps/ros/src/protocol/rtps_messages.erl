@@ -1,7 +1,7 @@
 -module(rtps_messages).
 -export([header/1,build_message/2,serialize_sub_header/1,serialize_info_dst/1,serialize_info_timestamp/0,
         is_rtps_packet/1,parse_rtps_header/1,parse_submsg_header/1,parse_data/2,parse_heartbeat/2,parse_acknack/2,
-        parse_param_list/1,serialize_data/1,serialize_heatbeat/1,serialize_acknack/1]).
+        parse_param_list/1,serialize_data/2,serialize_heatbeat/1,serialize_acknack/1]).
 
 -include("rtps_constants.hrl").
 -include("rtps_structure.hrl").
@@ -142,18 +142,27 @@ spdp_data_to_param_payload(#spdp_disc_part_data{
                 ++[{meta_uni_locator,L} || L <- M_UNI_L]
                 ++[{meta_multi_locator,L} || L <-  M_MULTI_L])).
 
-serialize_data(#cacheChange{writerGuid=W,sequenceNumber=SN,data=#spdp_disc_part_data{}=D}) -> 
+serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=#spdp_disc_part_data{}=D}) -> 
         Payload = spdp_data_to_param_payload(D),
-        Body = serialize_data_sub_msg(?ENTITYID_UNKNOWN,W#guId.entityId,SN,?PL_CDR_LE,Payload),
+        Body = serialize_data_sub_msg(DST_READER_ID,W#guId.entityId,SN,?PL_CDR_LE,Payload),
         SubHead = serialize_sub_header(#subMessageHeader{
                 kind = ?SUB_MSG_KIND_DATA,
                 length = byte_size(Body),
                 flags = <<0:5, 1:1, 0:1, 1:1>>
         }),
         <<SubHead/binary,Body/binary>>;
-serialize_data(#cacheChange{writerGuid=W,sequenceNumber=SN,data=#sedp_disc_endpoint_data{dst_reader_id=R}=D}) -> 
+serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=#sedp_disc_endpoint_data{}=D}) -> 
         Payload = sedp_data_to_param_payload(D),
-        Body = serialize_data_sub_msg(R,W#guId.entityId,SN,?PL_CDR_LE,Payload),
+        Body = serialize_data_sub_msg(DST_READER_ID,W#guId.entityId,SN,?PL_CDR_LE,Payload),
+        SubHead = serialize_sub_header(#subMessageHeader{
+                kind = ?SUB_MSG_KIND_DATA,
+                length = byte_size(Body),
+                flags = <<0:5, 1:1, 0:1, 1:1>>
+        }),
+        <<SubHead/binary,Body/binary>>;
+serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=D}) -> 
+        Payload = D,
+        Body = serialize_data_sub_msg(DST_READER_ID,W#guId.entityId,SN,?CDR_LE,Payload),
         SubHead = serialize_sub_header(#subMessageHeader{
                 kind = ?SUB_MSG_KIND_DATA,
                 length = byte_size(Body),

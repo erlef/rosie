@@ -15,7 +15,7 @@
         entity = #endPoint{},
         history_cache,
         writer_proxies = [],
-        heartbeatResponseDelay = 500,
+        heartbeatResponseDelay = 10, %default should be 500
         heartbeatSuppressionDuration = 0,
         acknack_count = 0
 }).
