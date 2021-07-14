@@ -1,0 +1,15 @@
+{application, ros,
+ [{description, "Ros Client Library"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {ros_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    dds
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
