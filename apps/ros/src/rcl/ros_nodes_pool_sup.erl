@@ -1,4 +1,4 @@
--module(talker_sup).
+-module(ros_nodes_pool_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -21,17 +21,16 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
-                 intensity => 0,
-                 period => 1},
-    Talker =  #{id => talker,
-             start => {talker, start_link, []},
-             restart => transient,  
-             shutdown => 5000,
-             type => worker},
+    io:format("~p.erl STARTED!\n",[?MODULE]),
+    SupFlags = #{strategy => simple_one_for_one,
+                intensity => 0,
+                period => 1},
+    Node = [#{id => ros_node_sup,
+            start => {ros_node_sup,start_link,[]},
+            restart => permanent,  
+            shutdown => 5000,
+            type => supervisor}],
 
-    ChildSpecs = [Talker],
-
-    {ok, {SupFlags, ChildSpecs}}.
+    {ok, {SupFlags, Node}}.
 
 %% internal functions

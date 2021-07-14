@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([create/1,on_change_available/2,new_change/2,get_cache/1,update_matched_readers/2,
+-export([start_link/1,on_change_available/2,new_change/2,get_cache/1,update_matched_readers/2,
         matched_reader_add/2,matched_reader_remove/2,is_acked_by_all/1,receive_acknack/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -24,23 +24,43 @@
         last_sequence_number = 0
 }).
 %API
-create({Participant,WriterConfig, Cache}) -> gen_server:start_link(?MODULE, {Participant,WriterConfig, Cache},[]).
+start_link({Participant,WriterConfig}) -> gen_server:start_link(?MODULE, {Participant,WriterConfig},[]).
 
-new_change(Pid,Data) -> gen_server:call(Pid,{new_change,Data}).
-on_change_available(Pid, ChangeKey) -> gen_server:cast(Pid, {on_change_available, ChangeKey}).
+new_change(Name,Data) -> 
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:call(Pid,{new_change,Data}).
+on_change_available(Name, ChangeKey) ->         
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {on_change_available, ChangeKey}).
 %Adds new locators if missing, removes old locators not specified in the call.
-update_matched_readers(Pid, R) -> gen_server:cast(Pid, {update_matched_readers, R}).
-matched_reader_add(Pid, R) -> gen_server:cast(Pid, {matched_reader_add, R}).
-matched_reader_remove(Pid, R)-> gen_server:cast(Pid, {matched_reader_remove, R}).
-is_acked_by_all(Pid) -> gen_server:call(Pid, is_acked_by_all).
-receive_acknack(Pid, Acknack) -> gen_server:cast(Pid, {receive_acknack, Acknack}).
-get_cache(Pid) -> gen_server:call(Pid,get_cache).
+update_matched_readers(Name, R) ->         
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {update_matched_readers, R}).
+matched_reader_add(Name, R) ->         
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:cast(Pid, {matched_reader_add, R}).
+matched_reader_remove(Name, R)->         
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {matched_reader_remove, R}).
+is_acked_by_all(Name) ->         
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:call(Pid, is_acked_by_all).
+receive_acknack(Name, Acknack) ->         
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {receive_acknack, Acknack}).
+get_cache(Name) ->
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:call(Pid,get_cache).
 
 % callbacks
-init({Participant,#endPoint{guid=GUID}=WriterConfig, Cache}) -> 
-        State = #state{participant = Participant, entity = WriterConfig, history_cache = Cache},
-        rtps_history_cache:set_listener(Cache, {self(),?MODULE}),
+init({Participant,#endPoint{guid=GUID}=WriterConfig}) -> 
         pg:join(GUID, self()),
+        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        State = #state{participant = Participant, 
+                        entity = WriterConfig,
+                        history_cache = {cache_of, GUID}},
+        rtps_history_cache:set_listener({cache_of, GUID}, {GUID,?MODULE}),
+        
         erlang:send_after(100,self(),heartbeat_loop),
         erlang:send_after(200,self(),write_loop),
         {ok,State}.
@@ -80,7 +100,7 @@ handle_info(write_loop,State) -> {noreply,write_loop(State)}.
 send_to_heatbeat_to_readers(_,_,[]) -> ok;
 send_to_heatbeat_to_readers(GuidPrefix, HB, [#reader_proxy{ unacked_changes = []} | TL]) ->
         send_to_heatbeat_to_readers(GuidPrefix, HB, TL);
-send_to_heatbeat_to_readers(GuidPrefix, HB, [#reader_proxy{guid = ReaderGUID,unicastLocatorList=[L|_]} | TL]) -> 
+send_to_heatbeat_to_readers(GuidPrefix, HB, [#reader_proxy{guid = ReaderGUID,unicastLocatorList=[L|_]} | TL]) ->   
         [G|_] = pg:get_members(rtps_gateway),
         SUB_MSG_LIST = [rtps_messages:serialize_heatbeat(HB#heartbeat{readerGUID=ReaderGUID})],
         Datagram = rtps_messages:build_message(GuidPrefix, SUB_MSG_LIST),
@@ -124,7 +144,7 @@ h_new_change(D,#state{last_sequence_number=Last_SN,entity=E,history_cache=C}=S) 
                 instanceHandle=0,sequenceNumber=SN, data = D},
         {Change, S#state{last_sequence_number=SN}}.
 
-h_update_matched_readers(Proxies,#state{reader_proxies=RP, history_cache=C} = S) ->  
+h_update_matched_readers(Proxies,#state{reader_proxies=RP, history_cache=C} = S) ->
         Valid_GUIDS = [ G || #reader_proxy{guid=G} <- Proxies],
         ProxyStillValid = [ Proxy || #reader_proxy{guid=G}=Proxy <- RP, lists:member(G, Valid_GUIDS) ],
         NewProxies = [Proxy || #reader_proxy{guid=G}=Proxy <- Proxies, not lists:member(G,[ G || #reader_proxy{guid=G} <- RP])],

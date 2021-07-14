@@ -96,8 +96,8 @@
 
 -record(endPoint,{
         guid=#guId{},     
-        reliabilityLevel,
-        topicKind,
+        reliabilityLevel = reliable,
+        topicKind = 1, % NO_KEY
         unicastLocatorList = [],
         multicastLocatorList = []
 }).

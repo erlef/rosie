@@ -1,4 +1,4 @@
--module(talker_sup).
+-module(rtps_wire_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -21,16 +21,21 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
+     io:format("~p.erl STARTED!\n",[?MODULE]),
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1},
-    Talker =  #{id => talker,
-             start => {talker, start_link, []},
-             restart => transient,  
+    Gate =  #{id => gateway,
+             start => {rtps_gateway,start_link,[]},
+             restart => permanent,  
              shutdown => 5000,
              type => worker},
-
-    ChildSpecs = [Talker],
+    Receiver =  #{id => receiver,
+             start => {rtps_receiver,start_link,[]},
+             restart => permanent,  
+             shutdown => 5000,
+             type => worker},
+    ChildSpecs = [Gate,Receiver],
 
     {ok, {SupFlags, ChildSpecs}}.
 

@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([create/1,update_matched_writers/2,receive_data/2,get_cache/1,receive_heartbeat/2]).
+-export([start_link/1,update_matched_writers/2,receive_data/2,get_cache/1,receive_heartbeat/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include("rtps_structure.hrl").
@@ -20,16 +20,35 @@
         acknack_count = 0
 }).
 %API
-create({Participant,ReaderConfig, Cache}) -> 
-        State = #state{participant = Participant, entity = ReaderConfig, history_cache = Cache },
+start_link({Participant,ReaderConfig}) -> 
+        State = #state{participant = Participant, entity = ReaderConfig},
         gen_server:start_link(?MODULE, State,[]).
 
-get_cache(Pid) -> gen_server:call(Pid,get_cache).
-receive_heartbeat(Pid,HB) -> gen_server:cast(Pid, {receive_heartbeat, HB}).
-update_matched_writers(Pid,Proxies) -> gen_server:cast(Pid,{update_matched_writers, Proxies}).
-receive_data(Pid,Data) -> gen_server:cast(Pid,{receive_data,Data}).
+get_cache(Name) ->         
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,get_cache).
+
+receive_heartbeat(Pid,HB) when is_pid(Pid) ->
+        gen_server:cast(Pid, {receive_heartbeat, HB});
+receive_heartbeat(Name,HB) ->         
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {receive_heartbeat, HB}).
+
+update_matched_writers(Name,Proxies) ->        
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid,{update_matched_writers, Proxies}).
+
+receive_data(Pid,Data) when is_pid(Pid) ->     
+        gen_server:cast(Pid,{receive_data,Data});
+receive_data(Name,Data) ->        
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid,{receive_data,Data}).
 % callbacks
-init(#state{entity=E} = State) -> pg:join(E#endPoint.guid, self()), {ok,State}.
+init(#state{entity=E} = State) -> 
+        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        pg:join(E#endPoint.guid, self()), 
+        pg:join(rtps_readers, self()),
+        {ok,State#state{history_cache={cache_of,E#endPoint.guid}}}.
 
 
 handle_call(get_cache, _, State) -> {reply,State#state.history_cache,State};
@@ -64,6 +83,7 @@ lost_change_update(#change_from_writer{change_key={_,_},status=_}=C,FirstSN) -> 
 manage_heartbeat_for_writer(#heartbeat{writerGUID = WGUID, final_flag = FF, min_sn=Min,max_sn=Max},
                         #writer_proxy{changes_from_writer=C}=W,
                         #state{writer_proxies = WP, heartbeatResponseDelay = Delay}=S) ->
+        %io:format("~p\n",[WGUID]),
         Others = [ P || #writer_proxy{guid=G}=P <- WP, G /= WGUID],
         NewChangeList = missing_changes_update(WGUID,C,Min,Max),
         Check2 = lists:map(fun (Elem) -> lost_change_update(Elem,Min) end, NewChangeList),

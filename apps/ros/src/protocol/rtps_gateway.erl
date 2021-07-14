@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([create/1,send/2]).%send_data/2,get_cache/1]).
+-export([start_link/0,send/2]).%send_data/2,get_cache/1]).
 -export([init/1, handle_cast/2, handle_call/3]).
 
 -include("rtps_structure.hrl").
@@ -16,15 +16,16 @@
 }).
 
 %API
-create(Participant) -> 
-        State = #state{participant = Participant},
-        gen_server:start_link(?MODULE, State,[]).
+start_link() -> 
+        gen_server:start_link(?MODULE, #state{},[]).
 
 
 send(Pid,{Data,Dst}) -> gen_server:cast(Pid, {send,{Data,Dst}}).
 
 % callbacks
 init(State) -> 
+io:format("~p.erl STARTED!\n",[?MODULE]),
+        
         pg:join(rtps_gateway, self()), 
         {ok, S}  = gen_udp:open(0),
         {ok,State#state{socket=S}}.

@@ -4,7 +4,7 @@
 
 -behaviour(gen_server).
 
--export([create/1,receive_data/2,get_cache/1]).
+-export([start_link/2,receive_data/2,get_cache/1]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -include("rtps_structure.hrl").
@@ -17,16 +17,22 @@
         history_cache
 }).
 %API
-create({Participant,ReaderConfig, Cache}) -> 
-        State = #state{participant = Participant, entity = ReaderConfig, history_cache = Cache },
+start_link(Participant,ReaderConfig) -> 
         gen_server:start_link(%{local, ?E_ATOM(ReaderConfig#endPoint.endPointId#entityId.key)}, 
-                ?MODULE, State,[]).
+                ?MODULE, {Participant,ReaderConfig},[]).
 
-get_cache(Pid) -> gen_server:call(Pid,get_cache).
+get_cache(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,get_cache).
 
-receive_data(Pid,Data) -> gen_server:cast(Pid,{receive_data,Data}).
+receive_data(Name,Data) ->
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid,{receive_data,Data}).
 % callbacks
-init(#state{entity=E} = State) -> pg:join(E#endPoint.guid, self()), {ok,State}.
+init({Participant,ReaderConfig}) -> 
+        io:format("~p.erl STARTED!\n",[?MODULE]),
+        pg:join(ReaderConfig#endPoint.guid, self()),
+        {ok,#state{participant = Participant, entity = ReaderConfig, history_cache = {cache_of,ReaderConfig#endPoint.guid}}}.
 
 
 handle_call(get_cache, _, State) -> {reply,State#state.history_cache,State};

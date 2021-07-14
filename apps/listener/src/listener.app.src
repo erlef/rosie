@@ -5,7 +5,8 @@
   {mod, {listener_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    ros
    ]},
   {env,[]},
   {modules, []},

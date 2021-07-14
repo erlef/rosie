@@ -11,9 +11,14 @@
 -include("rmw_dds_msg.hrl").
 
 start_link() -> gen_server:start_link(?MODULE, [], []).
-on_data_available(Pid, {ReaderPid, ChangeKey}) -> gen_server:cast(Pid,{on_data_available, {ReaderPid, ChangeKey}}).
+on_data_available(Name, {ReaderPid, ChangeKey}) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid,{on_data_available, {ReaderPid, ChangeKey}}).
 
-init(S) -> {ok,S}.
+init(S) -> 
+        io:format("~p.erl STARTED!\n",[?MODULE]),
+        pg:join(?MODULE, self()),
+        {ok,S}.
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast({on_data_available, { ReaderPid, ChangeKey}},S) -> 
         Change = dds_data_r:read(ReaderPid, ChangeKey),

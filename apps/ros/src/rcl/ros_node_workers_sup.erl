@@ -1,4 +1,4 @@
--module(talker_sup).
+-module(ros_node_workers_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -21,17 +21,13 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
-                 intensity => 0,
-                 period => 1},
-    Talker =  #{id => talker,
-             start => {talker, start_link, []},
-             restart => transient,  
-             shutdown => 5000,
-             type => worker},
+        io:format("~p.erl STARTED!\n",[?MODULE]),
+        SupFlags = #{strategy => one_for_one,
+                intensity => 0,
+                period => 1},
 
-    ChildSpecs = [Talker],
+        ChildSpecs = [],
 
-    {ok, {SupFlags, ChildSpecs}}.
+        {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

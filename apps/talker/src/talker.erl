@@ -16,18 +16,16 @@
                 period=1000,
                 num=0}).
 
-start_link() -> gen_server:start_link(?MODULE, #state{}, []).
-receive_chat(Msg) -> io:format("~s\n",[Msg]).
+start_link() -> 
+        gen_server:start_link(?MODULE, #state{}, []).
+receive_chat(Msg) -> 
+        io:format("~s\n",[Msg]).
 
 init(#state{period=P}=S) -> 
-        rcl:start_link(),
-
-        {ok, Node} = ros_node:create("talker"),
+        Node = ros_context:create_node("talker"),
         
         ChatterTopic = #user_topic{type_name=?msg_string_topic_type , name="chatter"},
         Pub = ros_node:create_publisher(Node, ChatterTopic),
-
-        rcl:spin(Node),
 
         erlang:send_after(P,self(),publish),
 

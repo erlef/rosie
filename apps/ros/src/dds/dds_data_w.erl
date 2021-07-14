@@ -13,22 +13,23 @@
 
 start_link(Setup) -> gen_server:start_link( ?MODULE, Setup, []).
 
-match_remote_readers(Pid, R) -> gen_server:cast(Pid, {match_remote_readers,R}).
-remote_reader_add(Pid, R) -> gen_server:cast(Pid, {remote_reader_add,R}).
-write(Pid, MSG) -> gen_server:cast( Pid, {write, MSG}).
+match_remote_readers(Name, R) ->        
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {match_remote_readers,R}).
+remote_reader_add(Name, R) ->       
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {remote_reader_add,R}).
+write(Name, MSG) ->        
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast( Pid, {write, MSG}).
+
 %callbacks 
-init({Topic,#participant{guid=ID},EntityID}) ->  
-        WriterConfig = #endPoint{
-                guid = #guId{ prefix = ID#guId.prefix, entityId = EntityID },     
-                reliabilityLevel = reliable,
-                topicKind = ?NO_KEY,
-                unicastLocatorList = [],
-                multicastLocatorList = []
-        },
-        {ok,Cache} = rtps_history_cache:new(), 
-        [P|_] = pg:get_members(ID),
-        W = rtps_participant:create_full_writer(P, WriterConfig, Cache),% rtps_full_writer:create({P, WriterConfig, Cache}),
-        {ok,#state{topic=Topic, rtps_writer=W, history_cache=Cache}}.
+init({Topic,#participant{guid=ID},GUID}) ->  
+        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        pg:join({data_w_of, GUID},self()),
+        %[P|_] = pg:get_members(ID),
+        %W = rtps_participant:create_full_writer(P, WriterConfig, Cache),% rtps_full_writer:create({P, WriterConfig, Cache}),
+        {ok,#state{topic=Topic,  rtps_writer=GUID, history_cache = {cache_of,GUID}}}.
 
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({match_remote_readers,R}, #state{rtps_writer=W}=S) -> rtps_full_writer:update_matched_readers(W, R), {noreply,S};

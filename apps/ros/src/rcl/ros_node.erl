@@ -1,5 +1,5 @@
 -module(ros_node).
--export([create/1,get_name/1,create_subscription/3,create_publisher/2,execute_all_jobs/1]).
+-export([start_link/1,get_name/1,create_subscription/3,create_publisher/2]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
@@ -9,21 +9,24 @@
 -include("../dds/dds_types.hrl").
 -include("../protocol/rtps_constants.hrl").
 
--record(state,{name,
-                dds_domain_participant,
-                job_list = []}).
+-record(state,{name}).
 
-create(Name) -> gen_server:start_link(?MODULE, Name, []).
-get_name(Pid) -> gen_server:call(Pid,get_name).
-create_subscription(Pid,Topic,Callback) -> gen_server:call(Pid,{create_subscription,Topic,Callback}).
-create_publisher(Pid,Topic) -> gen_server:call(Pid,{create_publisher,Topic}).
-execute_all_jobs(Pid) -> gen_server:call(Pid, execute_all_jobs).
+start_link(Name) -> gen_server:start_link(?MODULE, Name, []).
+get_name(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,get_name).
+create_subscription(Name,Topic,Callback) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,{create_subscription,Topic,Callback}).
+create_publisher(Name,Topic) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,{create_publisher,Topic}).
 
 %callbacks
 % 
 init(Name) ->
-        DP = rcl:get_dds_domain_participant(?ROS_CONTEXT),
-
+        io:format("~p.erl STARTED!\n",[?MODULE]),
+        pg:join({ros_node,Name}, self()),
         RosDiscoveryTopic = #user_topic{type_name=?ros_discovery_info_topic_type , 
                                 name=?ros_discovery_info_topic_name,
                                 qos_profile = #qos_profile{
@@ -31,15 +34,17 @@ init(Name) ->
                                                 history= {?KEEP_ALL_HISTORY_QOS,-1}
                                         }
                                 },
-        {ok,Listener} = ros_discovery_listener:start_link(),
-        J = [{sub,RosDiscoveryTopic,{Listener,ros_discovery_listener}}],
-        {ok,#state{name=Name, dds_domain_participant=DP, job_list = J}}.
+        ProcSpecs = #{  id => ros_discovery_listener,
+                        start => {ros_discovery_listener, start_link, []},
+                        type => worker},
+        {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
+        h_create_subscription(RosDiscoveryTopic, {ros_discovery_listener, ros_discovery_listener}),
+        {ok,#state{name=Name}}.
 
 handle_call({create_subscription,Topic, Callback},_,S) -> 
-        {reply,h_create_subscription(put_topic_prefix(Topic),Callback,S),S};
+        {reply,h_create_subscription(put_topic_prefix(Topic),Callback),S};
 handle_call({create_publisher,Topic},_,S) -> 
         {reply,h_create_publisher(put_topic_prefix(Topic),S),S};
-handle_call(execute_all_jobs,_,S) -> {reply,ok,h_execute_all_jobs(S)};
 handle_call(get_name,_,#state{name=N}=S) -> {reply,N,S};
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast(_,S) -> {noreply,S}.
@@ -49,35 +54,41 @@ handle_cast(_,S) -> {noreply,S}.
 % 
 put_topic_prefix(#user_topic{name=N}=Topic) ->
         Topic#user_topic{name= "rt/" ++ N}.
-h_create_subscription(Topic,{Pid, Module},#state{dds_domain_participant=DP}) ->
-        SUB = dds_domain_participant:get_default_subscriber(DP),
+h_create_subscription(Topic,{Name, Module}) ->
+        SUB = dds_domain_participant:get_default_subscriber(dds),
         DR = dds_subscriber:create_datareader(SUB, Topic),
-        dds_data_r:set_listener(DR, {Pid, Module});
-h_create_subscription(Topic,Callback,#state{dds_domain_participant=DP}) ->
-        SUB = dds_domain_participant:get_default_subscriber(DP),
+        dds_data_r:set_listener(DR, {Name, Module});
+h_create_subscription(Topic,Callback) ->
+        SUB = dds_domain_participant:get_default_subscriber(dds),
         DR = dds_subscriber:create_datareader(SUB, Topic),
-        {ok,Listener} = ros_msg_listener:start_link(Callback),
-        dds_data_r:set_listener(DR, {Listener, ros_msg_listener}).
+        ProcSpecs = #{  id => ros_msg_listener,
+                        start => {ros_msg_listener, start_link, [Callback]},
+                        type => worker},
+        {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
+        dds_data_r:set_listener(DR, {{ros_msg_listener,Callback}, ros_msg_listener}).
 
-h_create_publisher(Topic,#state{dds_domain_participant=DP}) ->
-        {ok,Pub} = ros_publisher:create(self(),DP,Topic),
-        Pub.
+h_create_publisher(Topic,#state{name=Name}) ->
+        ProcSpecs = #{  id => ros_publisher,
+                        start => {ros_publisher, start_link, [{ros_node,Name}, Topic]},
+                        type => worker},
+        {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
+        {ros_publisher,Topic}.
 
-sub_to_discovery(#state{name=Name, dds_domain_participant=DP}=S) -> 
-        % Subscribe to the ros discovery topic
-        RosDiscoveryTopic = #user_topic{type_name=?ros_discovery_info_topic_type , 
-                                name=?ros_discovery_info_topic_name,
-                                qos_profile = #qos_profile{
-                                                durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
-                                                history= {?KEEP_ALL_HISTORY_QOS,-1}
-                                        }
-                                },
-        {ok,Listener} = ros_discovery_listener:start_link(),
-        h_create_subscription(RosDiscoveryTopic,{Listener, ros_discovery_listener},S).
+% sub_to_discovery(#state{name=Name, dds_domain_participant=DP}=S) -> 
+%         % Subscribe to the ros discovery topic
+%         RosDiscoveryTopic = #user_topic{type_name=?ros_discovery_info_topic_type , 
+%                                 name=?ros_discovery_info_topic_name,
+%                                 qos_profile = #qos_profile{
+%                                                 durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
+%                                                 history= {?KEEP_ALL_HISTORY_QOS,-1}
+%                                         }
+%                                 },
+%         {ok,Listener} = ros_discovery_listener:start_link(),
+%         h_create_subscription(RosDiscoveryTopic,{Listener, ros_discovery_listener},S).
 
 
-h_execute_all_jobs(#state{job_list=[]}=S) ->
-        S#state{job_list=[]};
-h_execute_all_jobs(#state{job_list=[{sub,Topic,Handler}|TL]}=S) ->
-        h_create_subscription(Topic, Handler,S),
-        S#state{job_list=TL}.
+% h_execute_all_jobs(#state{job_list=[]}=S) ->
+%         S#state{job_list=[]};
+% h_execute_all_jobs(#state{job_list=[{sub,Topic,Handler}|TL]}=S) ->
+%         h_create_subscription(Topic, Handler,S),
+%         S#state{job_list=TL}.

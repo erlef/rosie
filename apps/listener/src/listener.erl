@@ -12,18 +12,19 @@
 -include("../../ros/src/rcl/rmw_dds_msg.hrl").
 
 
-start_link() -> gen_server:start_link(?MODULE, [], []).
-receive_chat(Msg) -> io:format("ROSIE: [listener]: I heard: ~s\n",[Msg]).
+start_link() -> 
+        gen_server:start_link(?MODULE, [], []).
+receive_chat(Msg) -> 
+        io:format("ROSIE: [listener]: I heard: ~s\n",[Msg]).
 
 init(S) -> 
-        rcl:start_link(),
+        io:format("~p.erl STARTED!\n",[?MODULE]),
 
-        {ok, Node} = ros_node:create("listener"),
+        Node = ros_context:create_node("listener"),
         
         ChatterTopic = #user_topic{type_name=?msg_string_topic_type , name="chatter"},
         ros_node:create_subscription(Node, ChatterTopic, fun receive_chat/1),
 
-        rcl:spin(Node),
         {ok,S}.
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast(_,S) -> {noreply,S}.

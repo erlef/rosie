@@ -1,4 +1,4 @@
--module(talker_sup).
+-module(dds_publisher_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -21,17 +21,22 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
+        io:format("~p.erl STARTED!\n",[?MODULE]),
+        SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1},
-    Talker =  #{id => talker,
-             start => {talker, start_link, []},
-             restart => transient,  
-             shutdown => 5000,
-             type => worker},
-
-    ChildSpecs = [Talker],
-
-    {ok, {SupFlags, ChildSpecs}}.
+        Writers_pool =  #{id => writers_pool,
+                 start => {dds_datawriters_pool_sup,start_link,[]},
+                 restart => permanent,  
+                 shutdown => 5000,
+                 type => supervisor},
+        PUB =  #{id => pub,
+                 start => {dds_publisher,start_link,[]},
+                 restart => permanent,  
+                 shutdown => 5000,
+                 type => worker},
+        ChildSpecs = [Writers_pool, PUB],
+ 
+        {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

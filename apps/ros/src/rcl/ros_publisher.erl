@@ -1,5 +1,5 @@
 -module(ros_publisher).
--export([create/3,publish/2]).
+-export([start_link/2,publish/2]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
@@ -9,22 +9,20 @@
 -include("../dds/dds_types.hrl").
 -include("../protocol/rtps_constants.hrl").
 
--record(state,{node,
-                topic,
-                dds_domain_participant,
-                dds_publisher,
-                dds_data_writer,
-                job_list = []}).
+-record(state,{node, topic, dds_data_writer}).
 
-create(Node,DP,Topic) -> gen_server:start_link(?MODULE, 
-                        #state{node=Node,dds_domain_participant=DP,topic=Topic}, []).
-publish(Pid,Msg) -> gen_server:cast(Pid,{publish,Msg}).
+start_link(Node,Topic) -> 
+        gen_server:start_link(?MODULE, #state{node=Node,topic=Topic}, []).
+publish(Name,Msg) ->
+        [Pid| _ ] = pg:get_members(Name),
+        gen_server:cast(Pid,{publish,Msg}).
 %callbacks
 % 
-init(#state{dds_domain_participant=DP,topic=Topic}=S) ->
-        Pub = dds_domain_participant:get_default_publisher(DP), 
+init(#state{topic=Topic}=S) ->
+        pg:join({?MODULE,Topic}, self()),
+        Pub = dds_domain_participant:get_default_publisher(dds), 
         DW = dds_publisher:create_datawriter(Pub, Topic),
-        {ok,S#state{dds_publisher=Pub, dds_data_writer= DW}}.
+        {ok,S#state{dds_data_writer= DW}}.
 
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast({publish,Msg},S) -> h_publish(Msg,S), {noreply,S};

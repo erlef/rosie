@@ -7,7 +7,7 @@
 
 -behaviour(gen_server).
 
--export([create/1, open_unicast_locators/2, get_local_locators/1, open_multicast_locators/2]).
+-export([start_link/0, open_unicast_locators/2, get_local_locators/1, open_multicast_locators/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include("rtps_structure.hrl").
@@ -86,26 +86,24 @@ process_entity_sub_msg(?SUB_MSG_KIND_PAD,{Flags,Body},_) -> not_managed;
 process_entity_sub_msg(_,_,_) -> not_managed.
 
 send_data_to_reader(State, {DstEntityID,SrcEntityID,SN,#spdp_disc_part_data{}=Data}) -> 
-        [P|_] = pg:get_members(#guId{prefix = State#state.destGuidPrefix, entityId = ?ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER}),
-        rtps_reader:receive_data(P, {#guId{prefix=State#state.sourceGuidPrefix,entityId=SrcEntityID}, SN, Data});
+        R_GUID = #guId{prefix = State#state.destGuidPrefix, entityId = ?ENTITYID_SPDP_BUILTIN_PARTICIPANT_READER},
+        rtps_reader:receive_data(R_GUID, {#guId{prefix=State#state.sourceGuidPrefix,entityId=SrcEntityID}, SN, Data});
 send_data_to_reader(State, {?ENTITYID_UNKNOWN,SrcEntityID,SN,Data}) -> 
         %io:format("Data for unknown, maybe writer is in PUSH-mode, should be broadcasted... \n"),
-        [P|_] = pg:get_members(#guId{prefix = State#state.destGuidPrefix, entityId = ?ENTITYID_PARTICIPANT}),
-        rtps_participant:send_to_all_readers(P,{#guId{prefix=State#state.sourceGuidPrefix,entityId=SrcEntityID}, SN, Data});
+        rtps_participant:send_to_all_readers(participant,
+                {#guId{prefix=State#state.sourceGuidPrefix,entityId=SrcEntityID}, SN, Data});
 send_data_to_reader(State, {DstEntityID,SrcEntityID,SN,Data}) -> 
         %io:format("Data for ~p\n",[DstEntityID]),
-        [P|_] = pg:get_members(#guId{prefix = State#state.destGuidPrefix, entityId = DstEntityID}),
-        rtps_full_reader:receive_data(P, {#guId{prefix=State#state.sourceGuidPrefix,entityId=SrcEntityID}, SN, Data}).
+        R_GUID = #guId{prefix = State#state.destGuidPrefix, entityId = DstEntityID},
+        rtps_full_reader:receive_data(R_GUID, {#guId{prefix=State#state.sourceGuidPrefix,entityId=SrcEntityID}, SN, Data}).
 
 send_acknack_to_writer(State, #acknack{writerGUID=W} = A) -> 
-        [P|_] = pg:get_members(W),
-        rtps_full_writer:receive_acknack(P, A).
+        rtps_full_writer:receive_acknack(W, A).
 
 send_heartbit_to_reader(State, #heartbeat{readerGUID=#guId{prefix=Prefix, entityId=RID}} = H) 
         when RID == ?ENTITYID_UNKNOWN ->
-        [P|_] = pg:get_members(#guId{prefix=Prefix,entityId=?ENTITYID_PARTICIPANT}),
-        rtps_participant:send_to_all_readers(P,H);
-        %io:format("should send heartbeat to all readers inside me \n"), ok;
+        %io:format("should send heartbeat ~p to all readers inside me \n",[H]), ok,
+        rtps_participant:send_to_all_readers(participant,H);
 send_heartbit_to_reader(State, #heartbeat{readerGUID=R} = H) -> 
         [P|_] = pg:get_members(R),
         rtps_full_reader:receive_heartbeat(P, H).
@@ -154,12 +152,25 @@ analize(GuidPrefix, Packet, {Ip,Port}) ->
 
 
 % API
-create(GuidPrefix) -> gen_server:start_link( ?MODULE, #state{destGuidPrefix=GuidPrefix},[]).
-get_local_locators(Pid) -> gen_server:call(Pid, get_local_locators).
-open_unicast_locators(Pid,LocatorList) -> gen_server:cast(Pid,{open_unicast_locators,LocatorList}).
-open_multicast_locators(Pid,LocatorList) -> gen_server:cast(Pid,{open_multicast_locators,LocatorList}).
+start_link() -> gen_server:start_link( ?MODULE, #state{},[]).
+get_local_locators(Name) -> 
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:call(Pid, get_local_locators).
+open_unicast_locators(Name,LocatorList) -> 
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:cast(Pid,{open_unicast_locators,LocatorList}).
+open_multicast_locators(Name,LocatorList) -> 
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:cast(Pid,{open_multicast_locators,LocatorList}).
 % call backs
-init(State) -> {ok,State}.
+init(State) -> 
+        io:format("~p.erl STARTED!\n",[?MODULE]),
+        P = rtps_participant:get_info(participant),
+        ID = {receiver_of,P#participant.guid#guId.prefix},
+        pg:join(ID, self()),
+        open_unicast_locators(ID, P#participant.defaultUnicastLocatorList),
+        open_multicast_locators(ID, P#participant.defaultMulticastLocatorList),
+        {ok,State#state{destGuidPrefix = P#participant.guid#guId.prefix}}.
 handle_call(get_local_locators, _, State) -> {reply,h_get_local_locators(State),State};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({open_unicast_locators,List}, State) -> {noreply,open_udp_locators(unicast,List,State)};
@@ -182,7 +193,8 @@ open_udp_locators(unicast, [#locator{ip = _,port=P}|TL], #state{openedSockets=So
         {ok, Socket} = gen_udp:open(P, [{ip, LocalInterface},binary,{active,true}]),
         {ok, Port} = inet:port(Socket),
         open_udp_locators(unicast,TL,S#state{openedSockets=[{unicast,Socket,Port,LocalInterface}|Soc]});
-open_udp_locators(multicast, [#locator{ip = IP,port=P}|TL], #state{openedSockets=Soc}=S) ->    
+open_udp_locators(multicast, [#locator{ip = IP,port=P}|TL], #state{openedSockets=Soc}=S) ->
+        io:format("~p.erl Opened Socket!\n",[?MODULE]),  
         LocalInterface = get_local_ip(),        
         {ok, Socket} = gen_udp:open(P, [{reuseaddr,true}, {ip, LocalInterface}, %{multicast_loop, false},
         binary, {active,true}, {add_membership, {IP,{0,0,0,0}}}]),

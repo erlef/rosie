@@ -2,6 +2,7 @@
  [{description, "Ros Client Library"},
   {vsn, "0.1.0"},
   {registered, []},
+  {mod, {ros_app, []}},
   {applications,
    [kernel,
     stdlib

@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([create/1,on_change_available/2,new_change/2,get_cache/1,update_reader_locator_list/2,reader_locator_add/2,reader_locator_remove/2,unsent_changes_reset/1]).
+-export([start_link/2,on_change_available/2,new_change/2,update_reader_locator_list/2,reader_locator_add/2,reader_locator_remove/2,unsent_changes_reset/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include("rtps_structure.hrl").
@@ -18,31 +18,42 @@
         last_sequence_number = 0
 }).
 %API
-create({Participant,WriterConfig, Cache}) -> gen_server:start_link(?MODULE, {Participant,WriterConfig, Cache},[]).
+start_link(Participant,WriterConfig) -> gen_server:start_link(?MODULE, {Participant,WriterConfig},[]).
 
-new_change(Pid,Data) -> gen_server:call(Pid,{new_change,Data}).
-on_change_available(Pid, ChangeKey) -> gen_server:cast(Pid, {on_change_available, ChangeKey}).
+new_change(Name,Data) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,{new_change,Data}).
+on_change_available(Name, ChangeKey) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {on_change_available, ChangeKey}).
 %Adds new locators if missing, removes old locators not specified in the call.
-update_reader_locator_list(Pid, RL) -> gen_server:cast(Pid, {update_reader_locator_list, RL}).
-reader_locator_add(Pid,Locator) -> gen_server:cast(Pid, {reader_locator_add,Locator}).
-reader_locator_remove(Pid,Locator)-> gen_server:cast(Pid, {reader_locator_remove,Locator}).
-unsent_changes_reset(Pid) -> gen_server:cast(Pid, unsent_changes_reset).
+update_reader_locator_list(Name, RL) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {update_reader_locator_list, RL}).
+reader_locator_add(Name,Locator) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {reader_locator_add,Locator}).
+reader_locator_remove(Name,Locator)-> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {reader_locator_remove,Locator}).
+unsent_changes_reset(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, unsent_changes_reset).
 
-get_cache(Pid) -> gen_server:call(Pid,get_cache).
 
 % callbacks
-init({Participant,#endPoint{guid=GUID}=WriterConfig, Cache}) -> 
-        State = #state{participant = Participant, entity = WriterConfig, history_cache = Cache},
-        rtps_history_cache:set_listener(Cache, {self(),?MODULE}),
+init({Participant,#endPoint{guid=GUID}=WriterConfig}) -> 
+        io:format("~p.erl STARTED!\n",[?MODULE]),
         pg:join(GUID, self()),
+        Cache = {cache_of,GUID},
+        rtps_history_cache:set_listener(Cache, {GUID,?MODULE}),
         erlang:send_after(1000,self(),writer_loop),
-        {ok,State}.
+        {ok,#state{participant = Participant, entity = WriterConfig, history_cache = Cache}}.
 
 
 handle_call({new_change,Data}, _, State) ->  
         {Change, NewState} = h_new_change(Data, State),
         {reply, Change, NewState};
-handle_call(get_cache, _, State) -> {reply,State#state.history_cache,State};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_change_available, ChangeKey},S) -> {noreply, h_on_change_available(ChangeKey,S)};
 handle_cast({update_reader_locator_list, RL}, State) -> {noreply,h_update_reader_locator_list(RL,State)};
