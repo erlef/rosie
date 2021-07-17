@@ -1,0 +1,15 @@
+{application, turtle_controller,
+ [{description, "turtle_controller"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {turtle_controller_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

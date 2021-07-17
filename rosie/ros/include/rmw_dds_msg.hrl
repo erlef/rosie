@@ -1,6 +1,7 @@
 -ifndef(RMW_DDS_MSG_HRL).
 -define(RMW_DDS_MSG_HRL, true).
 
+% ROS2
 -define(ros_discovery_info_topic_name, "ros_discovery_info").
 -define(ros_discovery_info_topic_type, "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_").
 
@@ -15,9 +16,20 @@
         writer_gid_seq = []
 }).
 
+
 -record(participant_entities_info,{
         gid = #gid{},        
         node_entities_info_seq = []
+}).
+
+% GEOMETRY
+-define(msg_twist_topic_type, "geometry_msgs::msg::dds_::Twist_").
+
+-record(vector3,{x=0,y=0,z=0}).
+
+-record(twist,{
+        linear = #vector3{},        
+        angular = #vector3{}
 }).
 
 -endif.
