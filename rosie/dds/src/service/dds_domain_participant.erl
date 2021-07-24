@@ -27,8 +27,7 @@ get_discovered_participants(Pid) -> gen_server:call(Pid,get_discovered_participa
 
 %callbacks 
 init(S) -> 
-
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         EndPointSet =
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_ANNOUNCER + 
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_DETECTOR +

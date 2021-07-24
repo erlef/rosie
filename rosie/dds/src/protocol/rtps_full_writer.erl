@@ -55,7 +55,7 @@ get_cache(Name) ->
 % callbacks
 init({Participant,#endPoint{guid=GUID}=WriterConfig}) -> 
         pg:join(GUID, self()),
-        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        %io:format("~p.erl STARTED!\n",[?MODULE]), 
         State = #state{participant = Participant, 
                         entity = WriterConfig,
                         history_cache = {cache_of, GUID}},
@@ -114,7 +114,7 @@ send_heatbeat(#state{entity=#endPoint{guid=GUID}, history_cache=C, heatbeat_coun
                 min_sn = MinSN,
                 max_sn = MaxSN,
                 count = Count,
-                final_flag = 1,
+                final_flag = 0,
                 readerGUID= ?GUID_UNKNOWN
         },
         send_to_heatbeat_to_readers(GUID#guId.prefix,HB,RP).
@@ -125,6 +125,7 @@ heartbeat_loop(#state{heatbeat_period=HP,heatbeat_count=C}=S) ->
         S#state{heatbeat_count=C+1}.
 
 send_requested_changes(Prefix,RP) -> send_requested_changes(Prefix,RP,[]).
+
 send_requested_changes(Prefix,[],Sent) -> Sent;
 send_requested_changes(Prefix,[#reader_proxy{requested_changes=[]}=P|TL], Sent) -> 
         send_requested_changes(Prefix, TL, Sent ++ [P] );
@@ -134,7 +135,17 @@ send_requested_changes(Prefix,[#reader_proxy{guid=#guId{entityId=RID},unicastLoc
         Msg = rtps_messages:build_message(Prefix, SUB_MSG),
         rtps_gateway:send(G,{ Msg,{L#locator.ip, L#locator.port}}),
         send_requested_changes(Prefix, TL, Sent ++ [P#reader_proxy{requested_changes=[]}]).
-write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}},datawrite_period=P,reader_proxies=RP} = S) ->
+
+% write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}},
+%                 datawrite_period=P,
+%                 reader_proxies=RP,
+%                 push_mode = true} = S) ->
+%         erlang:send_after(P, self(), write_loop),
+%         S#state{reader_proxies = send_un_changes(Prefix,RP)};
+write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}},
+                datawrite_period=P,
+                reader_proxies=RP,
+                push_mode = false} = S) ->
         erlang:send_after(P, self(), write_loop),
         S#state{reader_proxies = send_requested_changes(Prefix,RP)}.
 

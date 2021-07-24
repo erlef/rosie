@@ -21,7 +21,7 @@ start_link(NodeName) ->
 %%                  modules => modules()}   % optional
 
 init(NodeName) ->
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         SupFlags = #{strategy => one_for_all,
                 intensity => 0,
                 period => 1},

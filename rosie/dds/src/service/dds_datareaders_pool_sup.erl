@@ -21,7 +21,7 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-    io:format("~p.erl STARTED!\n",[?MODULE]),
+    %io:format("~p.erl STARTED!\n",[?MODULE]),
     SupFlags = #{strategy => simple_one_for_one,
                  intensity => 0,
                  period => 1},

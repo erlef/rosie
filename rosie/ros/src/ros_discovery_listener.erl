@@ -16,18 +16,18 @@ on_data_available(Name, {ReaderPid, ChangeKey}) ->
         gen_server:cast(Pid,{on_data_available, {ReaderPid, ChangeKey}}).
 
 init(S) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         pg:join(?MODULE, self()),
         {ok,S}.
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast({on_data_available, { ReaderPid, ChangeKey}},S) -> 
         Change = dds_data_r:read(ReaderPid, ChangeKey),
         SerializedPayload = Change#cacheChange.data,
-        io:format("ROS: notified of new discovery data:\n"),
+        %io:format("ROS: notified of new discovery data:\n"),
         Info = parse_ros_discovery_info(SerializedPayload),
-        io:format("ROS: Participant GID: ~p\n",[Info#participant_entities_info.gid]),
-        io:format("ROS: found ~p nodes:\n",[ erlang:length(Info#participant_entities_info.node_entities_info_seq)]),
-        [io:format("ROS: ~s~s\n",[NNS,NN]) || #node_entities_info{node_namespace=NNS,node_name=NN}  <- Info#participant_entities_info.node_entities_info_seq],
+        %io:format("ROS: Participant GID: ~p\n",[Info#participant_entities_info.gid]),
+        %io:format("ROS: found ~p nodes:\n",[ erlang:length(Info#participant_entities_info.node_entities_info_seq)]),
+        %[io:format("ROS: ~s~s\n",[NNS,NN]) || #node_entities_info{node_namespace=NNS,node_name=NN}  <- Info#participant_entities_info.node_entities_info_seq],
         {noreply,S};
 handle_cast(_,S) -> {noreply,S}.
 

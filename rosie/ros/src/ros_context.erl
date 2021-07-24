@@ -18,7 +18,7 @@ spin(Node) -> gen_server:call(?ROS_CONTEXT, {spin, Node}).
 
 % callbacks
 init(S) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         {ok,S}.
 
 handle_call(get_dds_domain_participant,_,S) -> {reply,S#state.dds_domain_participant,S};

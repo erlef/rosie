@@ -26,7 +26,7 @@ match_remote_writers(Name, Writers) ->
 
 %callbacks 
 init({Topic,#participant{guid=ID}, GUID}) ->  
-        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        %io:format("~p.erl STARTED!\n",[?MODULE]), 
         pg:join({data_r_of, GUID},self()),
         rtps_history_cache:set_listener({cache_of, GUID}, {{data_r_of, GUID},?MODULE}),
         % [P|_] = pg:get_members(ID),

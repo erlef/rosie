@@ -164,7 +164,7 @@ open_multicast_locators(Name,LocatorList) ->
         gen_server:cast(Pid,{open_multicast_locators,LocatorList}).
 % call backs
 init(State) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         P = rtps_participant:get_info(participant),
         ID = {receiver_of,P#participant.guid#guId.prefix},
         pg:join(ID, self()),

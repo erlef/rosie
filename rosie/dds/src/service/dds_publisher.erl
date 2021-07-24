@@ -34,7 +34,7 @@ lookup_datawriter(Name,Topic) ->
 
 %callbacks 
 init([]) ->  
-        io:format("\t~p.erl STARTED!\n",[?MODULE]),
+        %io:format("\t~p.erl STARTED!\n",[?MODULE]),
         pg:join(dds_default_publisher, self()),
         
         P_info = rtps_participant:get_info(participant),
@@ -92,8 +92,8 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_writers=DW}=S) ->
         %io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
         Data = Change#cacheChange.data,
         ToBeMatched = [ Pid || {_,T,Pid} <- DW, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-        io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
-        % io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DR]]),
+        %io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DW]]),
         %io:format("DDS: interested writers are: ~p\n", [ToBeMatched]),
         [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
                                                          Pref == Data#sedp_disc_endpoint_data.endpointGuid#guId.prefix],

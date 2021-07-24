@@ -22,7 +22,7 @@ send(Pid,{Data,Dst}) -> gen_server:cast(Pid, {send,{Data,Dst}}).
 
 % callbacks
 init(State) -> 
-io:format("~p.erl STARTED!\n",[?MODULE]),
+%io:format("~p.erl STARTED!\n",[?MODULE]),
         
         pg:join(rtps_gateway, self()), 
         {ok, S}  = gen_udp:open(0),

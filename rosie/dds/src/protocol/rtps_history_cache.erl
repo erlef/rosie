@@ -34,7 +34,7 @@ get_min_seq_num(Name) ->
          gen_server:call(Pid,get_min_seq_num).
 % CALL_BACKS
 init(OwnerGUID) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        %io:format("~p.erl STARTED!\n",[?MODULE]), 
         pg:join({cache_of,OwnerGUID},self()),
         {ok,#state{}}.
 handle_call(get_min_seq_num, _, State) -> {reply,h_get_min_seq_num(State),State};
@@ -70,40 +70,40 @@ h_get_max_seq_num(#state{cache=C}) ->
 -include_lib("eunit/include/eunit.hrl").
 -include("rtps_constants.hrl").
 
-history_cache_test() -> 
-        {ok, Cache } = rtps_history_cache:new(),
-        SN = 10,
-        Change = #cacheChange{   kind=brutto, writerGuid= ?GUID_UNKNOWN,
-                instanceHandle=0,
-                sequenceNumber=SN,
-                inlineQoS=[],
-                data=#spdp_disc_part_data{}},
-        Change2 = Change#cacheChange{instanceHandle=1,sequenceNumber=SN+1},
-        Change3 = Change#cacheChange{instanceHandle=2,sequenceNumber=SN+2},
+% history_cache_test() -> 
+%         {ok, Cache } = rtps_history_cache:new(),
+%         SN = 10,
+%         Change = #cacheChange{   kind=brutto, writerGuid= ?GUID_UNKNOWN,
+%                 instanceHandle=0,
+%                 sequenceNumber=SN,
+%                 inlineQoS=[],
+%                 data=#spdp_disc_part_data{}},
+%         Change2 = Change#cacheChange{instanceHandle=1,sequenceNumber=SN+1},
+%         Change3 = Change#cacheChange{instanceHandle=2,sequenceNumber=SN+2},
 
-        rtps_history_cache:add_change(Cache,Change),
-        rtps_history_cache:add_change(Cache,Change2),
-        rtps_history_cache:add_change(Cache,Change3),
-        List = rtps_history_cache:get_all_changes(Cache),
-        ?assert( [Change,Change2,Change3] == List), 
-        C = rtps_history_cache:get_change(Cache,{?GUID_UNKNOWN,SN}),
-        io:format("~p\n",[C]),
-        ?assert(Change == C),
-        Min = rtps_history_cache:get_min_seq_num(Cache),
-        Max = rtps_history_cache:get_max_seq_num(Cache),
-        io:format("Max=~p, Min=~p\n",[Max,Min]),
-        ?assert(Min == 10),
-        ?assert(Max == 12),
-        rtps_history_cache:remove_change(Cache,{?GUID_UNKNOWN,10}),        
-        C2 = rtps_history_cache:get_change(Cache,{?GUID_UNKNOWN,10}),
-        io:format("~p\n",[C2]),
-        ?assert(C2 == not_found),
-        Min2 = rtps_history_cache:get_min_seq_num(Cache),
-        ?assert(Min2 == 11),
-        rtps_history_cache:add_change(Cache,Change),
-        C3 = rtps_history_cache:get_change(Cache,{?GUID_UNKNOWN,10}),
-        io:format("~p\n",[C3]),
-        ?assert(C3 == C).
+%         rtps_history_cache:add_change(Cache,Change),
+%         rtps_history_cache:add_change(Cache,Change2),
+%         rtps_history_cache:add_change(Cache,Change3),
+%         List = rtps_history_cache:get_all_changes(Cache),
+%         ?assert( [Change,Change2,Change3] == List), 
+%         C = rtps_history_cache:get_change(Cache,{?GUID_UNKNOWN,SN}),
+%         io:format("~p\n",[C]),
+%         ?assert(Change == C),
+%         Min = rtps_history_cache:get_min_seq_num(Cache),
+%         Max = rtps_history_cache:get_max_seq_num(Cache),
+%         io:format("Max=~p, Min=~p\n",[Max,Min]),
+%         ?assert(Min == 10),
+%         ?assert(Max == 12),
+%         rtps_history_cache:remove_change(Cache,{?GUID_UNKNOWN,10}),        
+%         C2 = rtps_history_cache:get_change(Cache,{?GUID_UNKNOWN,10}),
+%         io:format("~p\n",[C2]),
+%         ?assert(C2 == not_found),
+%         Min2 = rtps_history_cache:get_min_seq_num(Cache),
+%         ?assert(Min2 == 11),
+%         rtps_history_cache:add_change(Cache,Change),
+%         C3 = rtps_history_cache:get_change(Cache,{?GUID_UNKNOWN,10}),
+%         io:format("~p\n",[C3]),
+%         ?assert(C3 == C).
 
 
 

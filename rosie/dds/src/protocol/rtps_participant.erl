@@ -20,7 +20,7 @@
 start_link() -> gen_server:start_link( {local, participant}, ?MODULE, #state{},[]).
 
 init(S) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         DomainID = 0,
         GuidPrefix = <<?VendorId_0:8,?VendorId_1:8,(crypto:strong_rand_bytes(10))/binary>>,
         Participant = #participant{guid=#guId{

@@ -28,7 +28,7 @@ receive_data(Name,Data) ->
         gen_server:cast(Pid,{receive_data,Data}).
 % callbacks
 init({Participant,ReaderConfig}) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         pg:join(ReaderConfig#endPoint.guid, self()),
         {ok,#state{participant = Participant, entity = ReaderConfig, history_cache = {cache_of,ReaderConfig#endPoint.guid}}}.
 

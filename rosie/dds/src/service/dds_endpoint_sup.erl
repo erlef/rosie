@@ -21,7 +21,6 @@ start_link(Args) ->
 
 
 init({data_writer, Topic, P_info, Config}) ->
-    io:format("~p.erl STARTED!\n",[?MODULE]),
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1}, 
@@ -46,7 +45,6 @@ init({data_writer, Topic, P_info, Config}) ->
     {ok, {SupFlags, ChildSpecs}};
 
 init({data_reader, Topic, P_info, Config}) ->
-    io:format("~p.erl STARTED!\n",[?MODULE]),
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1}, 
@@ -73,7 +71,6 @@ init({data_reader, Topic, P_info, Config}) ->
 
 
 init({discovery_writer, P_info, Config}) ->
-    io:format("~p.erl STARTED!\n",[?MODULE]),
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1}, 
@@ -91,7 +88,6 @@ init({discovery_writer, P_info, Config}) ->
     {ok, {SupFlags, ChildSpecs}};
 
 init({discovery_reader, P_info, Config}) ->
-        io:format("~p.erl STARTED!\n",[?MODULE]),
         SupFlags = #{strategy => one_for_all,
                      intensity => 0,
                      period => 1}, 

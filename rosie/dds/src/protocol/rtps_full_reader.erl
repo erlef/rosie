@@ -43,7 +43,7 @@ receive_data(Name,Data) ->
         gen_server:cast(Pid,{receive_data,Data}).
 % callbacks
 init(#state{entity=E} = State) -> 
-        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        %io:format("~p.erl STARTED!\n",[?MODULE]), 
         pg:join(E#endPoint.guid, self()), 
         pg:join(rtps_readers, self()),
         {ok,State#state{history_cache={cache_of,E#endPoint.guid}}}.

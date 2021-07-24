@@ -24,7 +24,7 @@ write(Name, MSG) ->
 
 %callbacks 
 init({Topic,#participant{guid=ID},GUID}) ->  
-        io:format("~p.erl STARTED!\n",[?MODULE]), 
+        %io:format("~p.erl STARTED!\n",[?MODULE]), 
         pg:join({data_w_of, GUID},self()),
         %[P|_] = pg:get_members(ID),
         %W = rtps_participant:create_full_writer(P, WriterConfig, Cache),% rtps_full_writer:create({P, WriterConfig, Cache}),

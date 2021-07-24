@@ -1,5 +1,5 @@
 -module(ros_node).
--export([start_link/1,get_name/1,create_subscription/3,create_publisher/2]).
+-export([start_link/1,get_name/1,create_subscription/3,create_publisher/2,create_client/3]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
@@ -19,11 +19,14 @@ create_subscription(Name,Topic,Callback) ->
 create_publisher(Name,Topic) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{create_publisher,Topic}).
+create_client(Name, ServiceName, Callback) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,{create_client, ServiceName, Callback}).
 
 %callbacks
 % 
 init(Name) ->
-        io:format("~p.erl STARTED!\n",[?MODULE]),
+        %io:format("~p.erl STARTED!\n",[?MODULE]),
         pg:join({ros_node,Name}, self()),
         RosDiscoveryTopic = #user_topic{type_name=?ros_discovery_info_topic_type , 
                                 name=?ros_discovery_info_topic_name,
@@ -43,6 +46,8 @@ handle_call({create_subscription,Topic, Callback},_,S) ->
         {reply,h_create_subscription(put_topic_prefix(Topic),Callback),S};
 handle_call({create_publisher,Topic},_,S) -> 
         {reply,h_create_publisher(put_topic_prefix(Topic),S),S};
+handle_call({create_client, ServiceName, Callback},_,S) -> 
+        {reply,h_create_client( ServiceName, Callback,S),S};
 handle_call(get_name,_,#state{name=N}=S) -> {reply,N,S};
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast(_,S) -> {noreply,S}.
@@ -71,6 +76,13 @@ h_create_publisher(Topic,#state{name=Name}) ->
                         type => worker},
         {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
         {ros_publisher,Topic}.
+
+h_create_client(Service, Callback,#state{name=Name}) -> 
+        ProcSpecs = #{  id => ros_client,
+        start => {ros_client, start_link, [{ros_node,Name}, Service, Callback]},
+        type => worker},
+        {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
+        {ros_client,Service}.
 
 % sub_to_discovery(#state{name=Name, dds_domain_participant=DP}=S) -> 
 %         % Subscribe to the ros discovery topic

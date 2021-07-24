@@ -31,7 +31,7 @@ on_data_available(Name,{R,ChangeKey}) ->
         gen_server:cast(Pid, {on_data_available, {R,ChangeKey}}).
 %callbacks 
 init([]) ->  
-io:format("\t~p.erl STARTED!\n",[?MODULE]),
+        %io:format("\t~p.erl STARTED!\n",[?MODULE]),
         pg:join(dds_default_subscriber, self()),
         
         P_info = rtps_participant:get_info(participant),        
@@ -85,8 +85,8 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) ->
         %io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
         Data = Change#cacheChange.data,
         ToBeMatched = [ ID || {ID,T} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-        io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
-        % io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DR]]),
+        %io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T} <- DR]]),
         %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
         [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
                                                         Pref == Data#sedp_disc_endpoint_data.endpointGuid#guId.prefix],
