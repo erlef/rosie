@@ -245,6 +245,9 @@ serialize_acknack( #acknack{final_flag=FF}=A) ->
 % FLAGS are: N = non-standard, K = key serialized, D= data present, Q = in-line-QOS, E = little endian
 % I expect little endian
 % only data
+% 
+debug_data_flags(<<_:3,N:1,K:1,D:1,Q:1,E:1>>) -> io:format("Flags were: N=~p,K=~p,D=~p,Q=~p,E=~p\n",[N,K,D,Q,E]).
+
 parse_data(<<_:3,0:1,0:1, 1:1 ,0:1,1:1>>,% expected flags
         <<_:16/bitstring,%extra flags not used
         _:16/little,% OctetsToInlineQos not used for now
@@ -259,7 +262,7 @@ parse_data(<<_:3,0:1,0:1, 1:1 ,0:1,1:1>>,% expected flags
                 #entityId{key= <<WriterID:24>>,kind=WriterKind},
                 WriterSN,<<Rappresentation_id:16>>,SerializedPayload};
 % others
-parse_data(F,_) -> rtps_debug:data_flags(F), unsopported.
+parse_data(F,_) -> debug_data_flags(F), unsopported.
 
 
 % parameter parsing to records

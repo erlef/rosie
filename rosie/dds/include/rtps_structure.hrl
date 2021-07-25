@@ -58,9 +58,7 @@
         expectsInlineQos = false,
         unicastLocatorList = [],
         multicastLocatorList = [],
-        requested_changes = [],
-        unsent_changes = [],
-        unacked_changes = []
+        changes_for_reader = []
 }).
 
 -record(writer_proxy,{
