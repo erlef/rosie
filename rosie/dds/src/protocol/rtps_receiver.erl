@@ -194,7 +194,7 @@ open_udp_locators(unicast, [#locator{ip = _,port=P}|TL], #state{openedSockets=So
         {ok, Port} = inet:port(Socket),
         open_udp_locators(unicast,TL,S#state{openedSockets=[{unicast,Socket,Port,LocalInterface}|Soc]});
 open_udp_locators(multicast, [#locator{ip = IP,port=P}|TL], #state{openedSockets=Soc}=S) ->
-        io:format("~p.erl Opened Socket!\n",[?MODULE]),  
+        %io:format("~p.erl Opened Socket!\n",[?MODULE]),  
         LocalInterface = get_local_ip(),        
         {ok, Socket} = gen_udp:open(P, [{reuseaddr,true}, {ip, LocalInterface}, %{multicast_loop, false},
         binary, {active,true}, {add_membership, {IP,{0,0,0,0}}}]),

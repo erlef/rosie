@@ -93,7 +93,7 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) ->
         Proxy = #writer_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
                         unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
                         multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
-        [ dds_data_r:match_remote_writers(ID,[Proxy]) || ID <- ToBeMatched ],
+        [ dds_data_r:remote_writer_add(ID,Proxy) || ID <- ToBeMatched ],
         {noreply,S};
 handle_cast(_, State) -> {noreply,State}.
 

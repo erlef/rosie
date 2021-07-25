@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 
--export([start_link/0]).
+-export([start_link/0, spawn_turtle/2, spawn_turtle_async/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/dds_types.hrl").
@@ -15,7 +15,10 @@
 
 start_link() -> 
         gen_server:start_link({local, turtle},?MODULE, [], []).
-
+spawn_turtle(Pid,Info) ->
+        gen_server:call(Pid,{spawn_turtle,Info}).
+spawn_turtle_async(Pid,Info) ->
+        gen_server:cast(Pid,{spawn_turtle_async,Info}).
 print_spawn_responce(Msg) -> 
         io:format("Spawn reply: ~s\n",[Msg]).
 
@@ -28,7 +31,16 @@ init(_) ->
         Client = ros_node:create_client(Node, spawn_interface, fun print_spawn_responce/1),
 
         {ok,#state{ros_node=Node, chatter_pub=Pub, spawn__client = Client}}.
+
+handle_call({spawn_turtle,{X, Y, Angle, Name}}, _, #state{spawn__client=C} = S) -> 
+        case ros_client:service_is_ready(C) of
+                true ->  {reply, ros_client:call(C, {X, Y, Angle, Name}), S};
+                false -> {reply, server_unavailable, S}
+        end;
 handle_call(_,_,S) -> {reply,ok,S}.
+handle_cast({spawn_turtle_async,{X, Y, Angle, Name}}, #state{spawn__client=C} = S) -> 
+        ros_client:cast(C, {X, Y, Angle, Name}),
+        {noreply,S};
 handle_cast(_,S) -> {noreply,S}.
 
 
@@ -52,9 +64,6 @@ handle_info(left, #state{chatter_pub=P} = S) ->
         Twist = #twist{angular=#vector3{x=0,y=0,z=1*Sign}},
         ros_publisher:publish(P,Twist),
         {noreply,S};
-handle_info({spawn, X, Y, Angle, Name}, #state{spawn__client=C} = S) -> 
-        io:format("To be implemented\n"),
-        ros_client:send_request(C, {X, Y, Angle, Name}),
-        {noreply,S};
-handle_info(_,S) -> {noreply,S}.
+handle_info(_,S) -> 
+        {noreply,S}.
 

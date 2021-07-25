@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1,update_matched_writers/2,receive_data/2,get_cache/1,receive_heartbeat/2]).
+-export([start_link/1,matched_writer_add/2, update_matched_writers/2,receive_data/2,get_cache/1,receive_heartbeat/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -35,6 +35,9 @@ receive_heartbeat(Name,HB) ->
 update_matched_writers(Name,Proxies) ->        
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid,{update_matched_writers, Proxies}).
+matched_writer_add(Name, R) ->         
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:cast(Pid, {matched_writer_add, R}).
 
 receive_data(Pid,Data) when is_pid(Pid) ->     
         gen_server:cast(Pid,{receive_data,Data});
@@ -56,6 +59,7 @@ handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({receive_data, Data}, State) -> {noreply,h_receive_data(Data,State)};
 handle_cast({receive_heartbeat, HB}, State) ->  {noreply,h_receive_heartbeat(HB,State)};
 handle_cast({update_matched_writers, Proxies}, S) -> {noreply,h_update_matched_writers(Proxies, S)};
+handle_cast({matched_writer_add, Proxy}, S) -> {noreply,h_matched_writer_add(Proxy, S)};
 handle_cast(_, State) -> {noreply,State}.
 
 handle_info({send_acknack_if_needed,{WGUID, FF}},State) ->  {noreply,h_send_acknack_if_needed(WGUID,FF,State)};
@@ -68,6 +72,8 @@ h_update_matched_writers(Proxies,#state{writer_proxies=WP}=S) ->
         %io:format("Updating with proxy: ~p\n",[Proxies]),
         NewProxies = [Proxy || #writer_proxy{guid=GUID}=Proxy <- Proxies, not lists:member(GUID,[ G || #writer_proxy{guid=G} <- WP])],
         S#state{writer_proxies = WP ++ NewProxies}.
+h_matched_writer_add(Proxy,#state{writer_proxies=WP}=S) -> 
+        S#state{writer_proxies = [Proxy | WP]}.
 
 
 missing_changes_update(WGUID,C,Min,Max) -> 
