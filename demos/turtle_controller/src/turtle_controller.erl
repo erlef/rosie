@@ -28,7 +28,7 @@ init(_) ->
         ChatterTopic = #user_topic{type_name=?msg_twist_topic_type , name="turtle1/cmd_vel"},
         Pub = ros_node:create_publisher(Node, ChatterTopic),
 
-        Client = ros_node:create_client(Node, spawn_interface, fun print_spawn_responce/1),
+        Client = ros_node:create_client(Node, spawn_srv, fun print_spawn_responce/1),
 
         {ok,#state{ros_node=Node, chatter_pub=Pub, spawn__client = Client}}.
 

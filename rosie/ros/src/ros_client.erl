@@ -12,6 +12,7 @@
 -record(state,{node, 
         service_handle, 
         user_callback, 
+        client_id,
         dds_data_writer, 
         dds_data_reader,
         waiting_caller = none }).
@@ -53,7 +54,7 @@ init(#state{service_handle = Service}=S) ->
         SUB = dds_domain_participant:get_default_subscriber(dds),
         DR = dds_subscriber:create_datareader(SUB, SpawnReply),
         dds_data_r:set_listener(DR, {{?MODULE,Service}, ?MODULE}),
-        {ok,S#state{dds_data_writer=DW, dds_data_reader = DR}}.
+        {ok,S#state{dds_data_writer=DW, dds_data_reader = DR , client_id = <<(crypto:strong_rand_bytes(8))/binary>>}}.
 
 
 handle_call(service_is_ready, _, #state{dds_data_writer=DW, dds_data_reader=DR} = S) ->
@@ -63,26 +64,31 @@ handle_call(service_is_ready, _, #state{dds_data_writer=DW, dds_data_reader=DR} 
                 true -> {reply, true, S};
                 false -> {reply, false, S}
         end;
-handle_call({send_request_and_wait, Request}, From, #state{dds_data_writer = DW,service_handle = Service} = S) -> 
-        Serialized = Service:serialize_request(Request),
+handle_call({send_request_and_wait, Request}, From, #state{dds_data_writer = DW,service_handle = Service, client_id=ID} = S) -> 
+        Serialized = Service:serialize_request(ID,Request),
         dds_data_w:write(DW, Serialized),
         {noreply,S#state{waiting_caller = From}};
 handle_call(_,_,S) -> {reply,ok,S}.
-handle_cast({send_request_async, Request}, #state{dds_data_writer = DW,service_handle = Service} = S) -> 
-        Serialized = Service:serialize_request(Request),
+handle_cast({send_request_async, Request}, #state{dds_data_writer = DW,service_handle = Service, client_id=ID} = S) -> 
+        Serialized = Service:serialize_request(ID,Request),
         dds_data_w:write(DW, Serialized),
         {noreply,S};
 handle_cast({on_data_available, { Reader, ChangeKey}},
-                #state{waiting_caller = Caller, service_handle = Service} = S) when Caller /= none -> 
+                #state{client_id = Client_ID, waiting_caller = Caller, service_handle = Service} = S) when Caller /= none -> 
         Change = dds_data_r:read(Reader, ChangeKey),
         SerializedPayload = Change#cacheChange.data,
-        gen_server:reply(Caller, Service:parse_reply(SerializedPayload)),
-        {noreply,S#state{waiting_caller = none}};
+        case Service:parse_reply(SerializedPayload) of 
+                {Client_ID, Reply} -> gen_server:reply(Caller, Reply), {noreply,S#state{waiting_caller = none}};
+                _ -> {noreply,S}
+        end;
 handle_cast({on_data_available, { Reader, ChangeKey}},
-                #state{user_callback = UserCall, service_handle = Service} = S) -> 
+                #state{client_id = Client_ID, user_callback = UserCall, service_handle = Service} = S) -> 
         Change = dds_data_r:read(Reader, ChangeKey),
+
         SerializedPayload = Change#cacheChange.data,
-        UserCall(Service:parse_reply(SerializedPayload)),
-        {noreply,S};
+        case Service:parse_reply(SerializedPayload) of 
+                {Client_ID, Reply} -> UserCall(Reply), {noreply,S};
+                _ -> {noreply,S}
+        end;
 handle_cast(_,S) -> {noreply,S}.
 

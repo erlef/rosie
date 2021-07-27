@@ -1,5 +1,5 @@
 -module(ros_node).
--export([start_link/1,get_name/1,create_subscription/3,create_publisher/2,create_client/3]).
+-export([start_link/1,get_name/1,create_subscription/3,create_publisher/2,create_client/3,create_service/3]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
@@ -22,6 +22,9 @@ create_publisher(Name,Topic) ->
 create_client(Name, ServiceName, Callback) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{create_client, ServiceName, Callback}).
+create_service(Name, ServiceName, Callback) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,{create_service, ServiceName, Callback}).
 
 %callbacks
 % 
@@ -48,6 +51,8 @@ handle_call({create_publisher,Topic},_,S) ->
         {reply,h_create_publisher(put_topic_prefix(Topic),S),S};
 handle_call({create_client, ServiceName, Callback},_,S) -> 
         {reply,h_create_client( ServiceName, Callback,S),S};
+handle_call({create_service, ServiceName, Callback},_,S) -> 
+        {reply,h_create_service( ServiceName, Callback,S),S};
 handle_call(get_name,_,#state{name=N}=S) -> {reply,N,S};
 handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast(_,S) -> {noreply,S}.
@@ -84,21 +89,9 @@ h_create_client(Service, Callback,#state{name=Name}) ->
         {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
         {ros_client,Service}.
 
-% sub_to_discovery(#state{name=Name, dds_domain_participant=DP}=S) -> 
-%         % Subscribe to the ros discovery topic
-%         RosDiscoveryTopic = #user_topic{type_name=?ros_discovery_info_topic_type , 
-%                                 name=?ros_discovery_info_topic_name,
-%                                 qos_profile = #qos_profile{
-%                                                 durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
-%                                                 history= {?KEEP_ALL_HISTORY_QOS,-1}
-%                                         }
-%                                 },
-%         {ok,Listener} = ros_discovery_listener:start_link(),
-%         h_create_subscription(RosDiscoveryTopic,{Listener, ros_discovery_listener},S).
-
-
-% h_execute_all_jobs(#state{job_list=[]}=S) ->
-%         S#state{job_list=[]};
-% h_execute_all_jobs(#state{job_list=[{sub,Topic,Handler}|TL]}=S) ->
-%         h_create_subscription(Topic, Handler,S),
-%         S#state{job_list=TL}.
+h_create_service(Service, Callback,#state{name=Name}) -> 
+        ProcSpecs = #{  id => ros_client,
+        start => {ros_service, start_link, [{ros_node,Name}, Service, Callback]},
+        type => worker},
+        {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
+        {ros_service,Service}.

@@ -1,0 +1,13 @@
+{application, shared_interfaces,
+ [{description, "Interfaces for services, messages and actions used by the demos"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

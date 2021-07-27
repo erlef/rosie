@@ -1,0 +1,15 @@
+{application, minimal_client,
+ [{description, "Example client"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {minimal_client_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

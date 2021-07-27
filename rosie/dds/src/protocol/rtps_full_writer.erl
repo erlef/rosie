@@ -85,32 +85,34 @@ handle_info(write_loop,State) -> {noreply,write_loop(State)}.
 
 %callback helpers
 
-send_to_heatbeat_to_readers(_,_,[]) -> ok;
-send_to_heatbeat_to_readers(GuidPrefix, HB, [#reader_proxy{guid = ReaderGUID,unicastLocatorList=[L|_]} | TL]) ->   
+send_heartbeat_to_readers(_,_,[]) -> ok;
+send_heartbeat_to_readers(GuidPrefix, HB, [#reader_proxy{guid = ReaderGUID,unicastLocatorList=[L|_]} | TL]) ->   
         [G|_] = pg:get_members(rtps_gateway),
         SUB_MSG_LIST = [rtps_messages:serialize_heatbeat(HB#heartbeat{readerGUID=ReaderGUID})],
         Datagram = rtps_messages:build_message(GuidPrefix, SUB_MSG_LIST),
         rtps_gateway:send(G, {Datagram,{L#locator.ip,L#locator.port}}),
-        send_to_heatbeat_to_readers(GuidPrefix, HB, TL).
+        send_heartbeat_to_readers(GuidPrefix, HB, TL).
 
-% Must send the first HB with min 1 and max 0 to allow first MSG to be considered,
-% This triggers an acknack response with final_flag=1 which means the next data is really requested
-% This is already done by the rtps_history_cache:get_min_seq_num() and rtps_history_cache:get_max_seq_num()
-send_heatbeat(#state{entity=#endPoint{guid=GUID}, history_cache=C, heatbeat_count=Count,reader_proxies=RP}) -> 
-        MinSN = rtps_history_cache:get_min_seq_num(C),
-        MaxSN = rtps_history_cache:get_max_seq_num(C),
-        HB = #heartbeat{
+build_heartbeat(GUID, Cache, Count) ->
+        MinSN = rtps_history_cache:get_min_seq_num(Cache),
+        MaxSN = rtps_history_cache:get_max_seq_num(Cache),
+        #heartbeat{
                 writerGUID = GUID,
                 min_sn = MinSN,
                 max_sn = MaxSN,
                 count = Count,
                 final_flag = 0,
                 readerGUID= ?GUID_UNKNOWN
-        },
-        send_to_heatbeat_to_readers(GUID#guId.prefix,HB,RP).
+        }.
+% Must send the first HB with min 1 and max 0 to allow first MSG to be considered,
+% This triggers an acknack response with final_flag=1 which means the next data is really requested
+% This is already done by the rtps_history_cache:get_min_seq_num() and rtps_history_cache:get_max_seq_num()
+send_heartbeat(#state{entity=#endPoint{guid=GUID}, history_cache=C, heatbeat_count=Count,reader_proxies=RP}) ->
+        HB = build_heartbeat(GUID, C, Count),
+        send_heartbeat_to_readers(GUID#guId.prefix,HB,RP).
 
 heartbeat_loop(#state{heatbeat_period=HP,heatbeat_count=C}=S) -> 
-        send_heatbeat(S),
+        send_heartbeat(S),
         erlang:send_after(1000, self(), heartbeat_loop),
         S#state{heatbeat_count=C+1}.
 
@@ -135,11 +137,7 @@ send_selected_changes(RequestedKeys,Prefix, HC,
 
 send_changes(Filter, Prefix, _, [],Sent) -> Sent;
 send_changes(Filter, Prefix, HC, [#reader_proxy{guid=#guId{entityId=RID},unicastLocatorList=[L|_], changes_for_reader=CR}=P|TL], Sent) -> 
-        RequestedKeys = [ K || #change_for_reader{change_key = K, status = S} <- CR, S == Filter],
-        % case (Filter == unsent) and (length(RequestedKeys) > 0) of 
-        %         true -> io:format("Pushing, ~p\n", [RequestedKeys]);
-        %         _ -> ok
-        % end,        
+        RequestedKeys = [ K || #change_for_reader{change_key = K, status = S} <- CR, S == Filter],     
         NewCR = send_selected_changes(RequestedKeys, Prefix, HC, P),
         send_changes(Filter, Prefix, HC, TL, [P#reader_proxy{changes_for_reader=NewCR} | Sent]).
 
@@ -148,10 +146,10 @@ send_changes(Filter, Prefix,HC,RP) -> send_changes(Filter, Prefix,HC,RP,[]).
 write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}}, history_cache = HC,
                 datawrite_period=P, reader_proxies=RP, push_mode = true} = S) ->
         erlang:send_after(P, self(), write_loop),
-        send_changes(unsent, Prefix,HC,RP),
-        S#state{reader_proxies = send_changes(requested,Prefix,HC,RP)};
+        ProxiesPushed = send_changes(unsent, Prefix,HC,RP),
+        S#state{reader_proxies = send_changes(requested,Prefix,HC,ProxiesPushed)};
 write_loop(#state{entity=#endPoint{guid=#guId{prefix=Prefix}}, history_cache = HC,
-                datawrite_period=P, reader_proxies=RP, push_mode = false} = S) ->
+                datawrite_period=P, reader_proxies=RP} = S) ->
         erlang:send_after(P, self(), write_loop),
         S#state{reader_proxies = send_changes(requested,Prefix,HC,RP)}.
 
@@ -169,9 +167,12 @@ h_update_matched_readers(Proxies,#state{reader_proxies=RP, history_cache=C} = S)
         Changes = rtps_history_cache:get_all_changes(C),
         S#state{reader_proxies= ProxyStillValid ++ reset_reader_proxies(Changes,NewProxies)}.
 
-h_matched_reader_add(Proxy,#state{reader_proxies=RP, history_cache=C} = S) -> 
+h_matched_reader_add(Proxy,#state{entity=#endPoint{guid=GUID}, reader_proxies=RP, history_cache=C, heatbeat_count=Count} = S) -> 
         Changes = rtps_history_cache:get_all_changes(C),
-        S#state{reader_proxies=RP++reset_reader_proxies(Changes,[Proxy])}.
+        Proxies = reset_reader_proxies(Changes,[Proxy]),
+        HB = build_heartbeat(GUID, C, Count),
+        send_heartbeat_to_readers(GUID#guId.prefix,HB,Proxies),
+        S#state{reader_proxies= RP ++ Proxies, heatbeat_count=Count+1}.
 
 h_matched_reader_remove(Guid,#state{reader_proxies=RP} = S) -> 
         S#state{reader_proxies=[ P || #reader_proxy{guid=G}=P <- RP, G /= Guid]}.
@@ -200,6 +201,7 @@ add_change_to_proxies(Key,[Proxy| TL],NewProxies, Push=false)->
 
 h_on_change_available(Key,#state{history_cache=C,reader_proxies=RP, push_mode=Push}=S) -> 
         S#state{reader_proxies = add_change_to_proxies( Key, RP, Push)}.
+
 update_for_acknack([], _, _, S) -> S;
 update_for_acknack([#reader_proxy{changes_for_reader=Changes}=Proxy|_], Others, Missed, S) -> 
         ChangeKeys = [ K || #change_for_reader{change_key=K} <- Changes],
