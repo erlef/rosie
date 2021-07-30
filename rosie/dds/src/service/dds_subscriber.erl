@@ -81,19 +81,24 @@ handle_call({lookup_datareader, Topic}, _, #state{data_readers=DR}=State) ->
 handle_call(_, _, State) -> {reply,ok,State}.
 
 handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) -> 
-        Change = dds_data_r:read(R,ChangeKey), 
-        %io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
-        Data = Change#cacheChange.data,
-        ToBeMatched = [ ID || {ID,T} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-        %io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
-        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T} <- DR]]),
-        %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
-        [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
+        Change = dds_data_r:read(R,ChangeKey), % io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
+        Data = Change#cacheChange.data, % io:format("~p\n",[Data#sedp_disc_endpoint_data.status_qos]),
+        case ?ENDPOINT_LEAVING(Data#sedp_disc_endpoint_data.status_qos) of 
+                true -> 
+                [ dds_data_r:remote_writer_remove(Name,Data#sedp_disc_endpoint_data.endpointGuid) || 
+                                                                                        {_,T,Name} <- DR ];
+                _ ->     
+                        ToBeMatched = [ ID || {ID,T} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
+                        % io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+                        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T} <- DR]]),
+                        %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
+                        [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
                                                         Pref == Data#sedp_disc_endpoint_data.endpointGuid#guId.prefix],
-        Proxy = #writer_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
-                        unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
-                        multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
-        [ dds_data_r:remote_writer_add(ID,Proxy) || ID <- ToBeMatched ],
+                        Proxy = #writer_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
+                                        unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
+                                        multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
+                        [ dds_data_r:remote_writer_add(ID,Proxy) || ID <- ToBeMatched ]
+        end,
         {noreply,S};
 handle_cast(_, State) -> {noreply,State}.
 
@@ -101,6 +106,7 @@ handle_info(_,State) -> {noreply,State}.
 
 
 % HELPERS
+%  
 produce_sedp_disc_enpoint_data(#participant{guid=#guId{prefix=P},vendorId=VID,protocolVersion=PVER},
                 #user_topic{ type_name=TN, name=N, 
                                 qos_profile=#qos_profile{reliability=R,durability=D,history=H}},

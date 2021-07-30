@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1,matched_writer_add/2, update_matched_writers/2,receive_data/2,get_cache/1,receive_heartbeat/2]).
+-export([start_link/1,matched_writer_add/2, matched_writer_remove/2, update_matched_writers/2,receive_data/2,get_cache/1,receive_heartbeat/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -35,9 +35,14 @@ receive_heartbeat(Name,HB) ->
 update_matched_writers(Name,Proxies) ->        
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid,{update_matched_writers, Proxies}).
-matched_writer_add(Name, R) ->         
+
+matched_writer_add(Name, W) ->         
         [Pid|_] = pg:get_members(Name), 
-        gen_server:cast(Pid, {matched_writer_add, R}).
+        gen_server:cast(Pid, {matched_writer_add, W}).
+
+matched_writer_remove(Name, W) ->         
+        [Pid|_] = pg:get_members(Name), 
+        gen_server:cast(Pid, {matched_writer_remove, W}).
 
 receive_data(Pid,Data) when is_pid(Pid) ->     
         gen_server:cast(Pid,{receive_data,Data});
@@ -60,6 +65,7 @@ handle_cast({receive_data, Data}, State) -> {noreply,h_receive_data(Data,State)}
 handle_cast({receive_heartbeat, HB}, State) ->  {noreply,h_receive_heartbeat(HB,State)};
 handle_cast({update_matched_writers, Proxies}, S) -> {noreply,h_update_matched_writers(Proxies, S)};
 handle_cast({matched_writer_add, Proxy}, S) -> {noreply,h_matched_writer_add(Proxy, S)};
+handle_cast({matched_writer_add, R}, S) -> {noreply,h_matched_writer_remove(R, S)};
 handle_cast(_, State) -> {noreply,State}.
 
 handle_info({send_acknack_if_needed,{WGUID, FF}},State) ->  {noreply,h_send_acknack_if_needed(WGUID,FF,State)};
@@ -75,11 +81,14 @@ h_update_matched_writers(Proxies,#state{writer_proxies=WP}=S) ->
 h_matched_writer_add(Proxy,#state{writer_proxies=WP}=S) -> 
         S#state{writer_proxies = [Proxy | WP]}.
 
+h_matched_writer_remove(Guid,#state{writer_proxies=WP}=S) -> 
+        S#state{writer_proxies = [P || #writer_proxy{guid=G}=P <- WP, G /= Guid]}.
+
 
 missing_changes_update(WGUID,C,Min,Max) -> 
         PresentSN = [ SN || #change_from_writer{change_key={_,SN}} <- C],
         NewChanges = [ #change_from_writer{change_key={WGUID,SN},status=missing} || SN <- lists:seq(Min, Max), not lists:member(SN, PresentSN)],
-        NewChangeList = C ++ NewChanges.
+        C ++ NewChanges.
 
 lost_change_update(#change_from_writer{change_key={_,SN},status=S}=C,FirstSN) 
         when ((S == unknown) or (S == missing)) and SN < FirstSN -> C#change_from_writer{status = lost};

@@ -248,7 +248,14 @@ serialize_acknack( #acknack{final_flag=FF}=A) ->
 % 
 debug_data_flags(<<_:3,N:1,K:1,D:1,Q:1,E:1>>) -> io:format("Flags were: N=~p,K=~p,D=~p,Q=~p,E=~p\n",[N,K,D,Q,E]).
 
-parse_data(<<_:3,0:1,0:1, 1:1 ,0:1,1:1>>,% expected flags
+get_inline_qos(Inline_QOS_plus_data, QOS_list) ->
+        case parse_param(Inline_QOS_plus_data) of
+                {?PID_SENTINEL,_,Serialized_Key} -> {QOS_list, Serialized_Key };
+                {ID, Value, Next} -> get_inline_qos(Next, [ param_to_record(ID, Value) | QOS_list])
+        end.
+get_inline_qos(Inline_QOS_plus_data) -> get_inline_qos(Inline_QOS_plus_data, []).
+
+parse_data(<<_:3,0:1,0:1,1:1,0:1,1:1>>,% expected flags: Data present, no inline-qos and little-endian
         <<_:16/bitstring,%extra flags not used
         _:16/little,% OctetsToInlineQos not used for now
         ReaderID:24,ReaderKind:8,
@@ -261,11 +268,23 @@ parse_data(<<_:3,0:1,0:1, 1:1 ,0:1,1:1>>,% expected flags
                 {#entityId{key= <<ReaderID:24>>,kind=ReaderKind},
                 #entityId{key= <<WriterID:24>>,kind=WriterKind},
                 WriterSN,<<Rappresentation_id:16>>,SerializedPayload};
-% others
+parse_data(<<_:3,0:1,1:1,0:1,1:1,1:1>>,% expected flags: Serialized-Key, Inline-Qos and little-endian
+                <<_:16/bitstring,%extra flags not used
+                16:16/little,% OctetsToInlineQos expected to be 16
+                ReaderID:24,ReaderKind:8,
+                WriterID:24,WriterKind:8,
+                _:32,% usually is all 0
+                WriterSN:32/little-signed-integer,
+                Inline_QOS_plus_data/binary>>) ->
+        {QOS_list, <<Rappresentation_id:16,_:16,SerializedPayload/binary>>} = get_inline_qos(Inline_QOS_plus_data),
+        {QOS_list, #entityId{key= <<ReaderID:24>>,kind=ReaderKind},
+        #entityId{key= <<WriterID:24>>,kind=WriterKind},
+        WriterSN,<<Rappresentation_id:16>>,SerializedPayload};
 parse_data(F,_) -> debug_data_flags(F), unsopported.
 
 
 % parameter parsing to records
+param_to_record(?PID_STATUS_INFO, <<V:32/big>>) -> {status_info,V};
 param_to_record(?PID_USER_DATA, P) -> {user_data,P};
 param_to_record(?PID_PROTOCOL_VERSION, <<P:16,_:16>>) -> {rtps_version,P};
 param_to_record(?PID_VENDOR_ID, <<P:16,_:16>>) -> {vendor_id,P};

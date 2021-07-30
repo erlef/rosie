@@ -25,7 +25,7 @@ get_all_changes(Name) ->
         gen_server:call(Pid,get_all_changes).
 remove_change(Name,{WriterGuid,SequenceNumber}) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:cast(Pid,{remove_change, WriterGuid, SequenceNumber}).
+        gen_server:call(Pid,{remove_change, WriterGuid, SequenceNumber}).
 get_max_seq_num(Name) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,get_max_seq_num).
@@ -40,13 +40,13 @@ init(OwnerGUID) ->
 handle_call(get_min_seq_num, _, State) -> {reply,h_get_min_seq_num(State),State};
 handle_call(get_max_seq_num, _, State) -> {reply,h_get_max_seq_num(State),State};
 handle_call({get_change, WriterGuid, SequenceNumber}, _, State) -> {reply,h_get_change(State,WriterGuid,SequenceNumber),State};
+handle_call({remove_change, WriterGuid, SequenceNumber}, _,State) -> {reply,ok,h_remove_change(State, WriterGuid,SequenceNumber)};
 handle_call(get_all_changes, _, State) -> {reply, maps:values(State#state.cache) , State}.
 handle_cast({set_listener, L}, State) -> {noreply,State#state{listener=L}};
 handle_cast({add_change, Change}, #state{listener = L}=S) when L == not_set -> {noreply,h_add_change(S, Change)};
 handle_cast({add_change, Change}, #state{listener = {ID,Module}}=S) ->
         Module:on_change_available(ID,{Change#cacheChange.writerGuid,Change#cacheChange.sequenceNumber}),
-        {noreply,h_add_change(S, Change)};
-handle_cast({remove_change, WriterGuid, SequenceNumber}, State) -> {noreply,h_remove_change(State, WriterGuid,SequenceNumber)}.
+        {noreply,h_add_change(S, Change)}.
 handle_info(clean_up_loop,State) -> {noreply,State}.
 
 

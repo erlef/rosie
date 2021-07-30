@@ -91,6 +91,16 @@
 -define(PID_RELIABILITY,	16#001a).   % ReliabilityQosPolicy3
 -define(PID_LIFESPAN,	        16#002b).   % LifespanQosPolicy
 -define(PID_DESTINATION_ORDER,	16#0025).   % DestinationOrderQosPolicy
+-define(PID_CONTENT_FILTER_INFO,        16#0055). % ContentFilterInfo_t
+-define(PID_COHERENT_SET,               16#0056). % SequenceNumber_t
+-define(PID_DIRECTED_WRITE,             16#0057). % GUID_t4
+-define(PID_ORIGINAL_WRITER_INFO,       16#0061). % OriginalWriterInfo_t
+-define(PID_GROUP_COHERENT_SET,         16#0063). % SequenceNumber_t
+-define(PID_GROUP_SEQ_NUM,              16#0064). % SequenceNumber_t
+-define(PID_WRITER_GROUP_INFO,          16#0065). % WriterGroupInfo_t
+-define(PID_SECURE_WRITER_GROUP_INFO,   16#0066). % WriterGroupInfo_t
+-define(PID_KEY_HASH,                   16#0070). % KeyHash_t
+-define(PID_STATUS_INFO,                16#0071). % StatusInfo_t
 -define(PID_HISTORY,	        16#0040).   % HistoryQosPolicy
 -define(PID_RESOURCE_LIMITS,	16#0041).   % ResourceLimitsQosPolicy
 -define(PID_OWNERSHIP,	        16#001f).   % OwnershipQosPolicy
@@ -184,6 +194,13 @@
 
 -define(NO_KEY, 0).
 -define(WITH_KEY, 1).
+
+% Endpoints PID_STATUS_INFO BIT-MASKS
+-define(STATUS_INFO_UNREGISTERED,  (1 bsl 0)).
+-define(STATUS_INFO_DISPOSED,      (1 bsl 1)).
+
+
+-define(ENDPOINT_LEAVING(S), S == (?STATUS_INFO_UNREGISTERED bor ?STATUS_INFO_DISPOSED) ).
 
 
 -endif.

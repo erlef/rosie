@@ -130,7 +130,8 @@
         builtinEndpointQos = false, % for best_effort data-reader
         key,
         user_data,
-        leaseDuration
+        leaseDuration,
+        status_qos = 0
 }).
 -record(sedp_disc_endpoint_data, {
         dst_reader_id=#entityId{},
@@ -141,17 +142,14 @@
         vendorId,
         durability_qos = 0, % volatile
         reliability_qos = 2, % reliable as default
-        history_qos = {0,1} % keep_last depth 1
+        history_qos = {0,1}, % keep_last depth 1
+        status_qos = 0
 }).
 
 
-% sub-messages
-% -record(msg_data,{
-%         dst_reader_id=#entityId{},
-%         keyHashPrefix,
-%         keyHashSuffix,
-%         inlineQos=[],
-%         serializedData
-% }).
+-record(sedp_endpoint_state, {
+        guid,
+        status_flags
+}).
 
 -endif.

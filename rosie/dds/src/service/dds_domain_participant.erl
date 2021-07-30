@@ -4,7 +4,7 @@
 
 -export([start_link/1]).
 -export([get_default_publisher/1,update_participants_list/2,get_default_subscriber/1,get_discovered_participants/1]).%,create_publisher/2,create_subscriber/2]).
--export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
+-export([init/1, terminate/2, handle_call/3, handle_cast/2,handle_info/2]).
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/rtps_constants.hrl").
 
@@ -27,7 +27,7 @@ get_discovered_participants(Pid) -> gen_server:call(Pid,get_discovered_participa
 
 %callbacks 
 init(S) -> 
-        %io:format("~p.erl STARTED!\n",[?MODULE]),
+        %process_flag(trap_exit, true),
         EndPointSet =
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_ANNOUNCER + 
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_DETECTOR +
@@ -67,6 +67,9 @@ handle_cast({update_participants_list,PL}, S) -> {noreply,h_update_participants_
 handle_cast(_, State) -> {noreply,State}.
 
 handle_info(_,State) -> {noreply,State}.
+
+terminate(Reason,State) ->         
+        ok.
 
 %HELPERS
 filter_participants_with(PL, BUILTIN_ENDPOINT) -> 

@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0,create_datawriter/2,lookup_datawriter/2,on_data_available/2]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
+-export([start_link/0, create_datawriter/2,lookup_datawriter/2,on_data_available/2]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 
@@ -12,16 +12,12 @@
 
 -record(state,{
         rtps_participant_info=#participant{},
-        publication_subscriber,
         builtin_pub_announcer,
         builtin_sub_announcer,
         data_writers = [],
         incremental_key=1}).
 
 start_link() -> gen_server:start_link( ?MODULE, [],[]).
-% set_publication_subscriber(Name, Sub) -> 
-%         [Pid|_] = pg:get_members(Name),
-%         gen_server:call(Pid, {set_pub_subscriber,Sub}).
 on_data_available(Name,{R,ChangeKey}) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid, {on_data_available, {R,ChangeKey}}).
@@ -31,10 +27,13 @@ create_datawriter(Name,Topic) ->
 lookup_datawriter(Name,Topic) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{lookup_datawriter,Topic}).
+destory(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,destory).
 
 %callbacks 
 init([]) ->  
-        %io:format("\t~p.erl STARTED!\n",[?MODULE]),
+        process_flag(trap_exit, true),
         pg:join(dds_default_publisher, self()),
         
         P_info = rtps_participant:get_info(participant),
@@ -80,31 +79,41 @@ handle_call({create_datawriter,Topic}, _,
 handle_call({lookup_datawriter,builtin_sub_announcer}, _, State) -> {reply,State#state.builtin_sub_announcer,State};
 handle_call({lookup_datawriter,builtin_pub_announcer}, _, State) -> {reply,State#state.builtin_pub_announcer,State};
 handle_call({lookup_datawriter,Topic}, _, #state{data_writers=DW} = S) -> 
-        [W|_] = [ Pid || {_,T,Pid} <- DW, T==Topic ],
+        [W|_] = [ Name || {_,T,Name} <- DW, T==Topic ],
         {reply, W, S};
-handle_call({set_pub_subscriber,Sub}, _, S) -> 
-        SubDetector = dds_subscriber:lookup_datareader(Sub, builtin_sub_detector),
-        
-        {reply,ok,S#state{publication_subscriber=Sub}};
+% handle_call(destory, _, #state{data_writers=DW} = S) ->
+%         {reply, W, S#state{}};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_data_available,{R,ChangeKey}}, #state{data_writers=DW}=S) -> 
-        Change = dds_data_r:read(R,ChangeKey), 
-        %io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
+        Change = dds_data_r:read(R,ChangeKey),  %io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
         Data = Change#cacheChange.data,
-        ToBeMatched = [ Pid || {_,T,Pid} <- DW, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-        %io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
-        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DW]]),
-        %io:format("DDS: interested writers are: ~p\n", [ToBeMatched]),
-        [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
+        case ?ENDPOINT_LEAVING(Data#sedp_disc_endpoint_data.status_qos) of 
+                true -> %io:format("I should remove some ReaderProxy\n"),
+                        [ dds_data_w:remote_reader_remove(Name,Data#sedp_disc_endpoint_data.endpointGuid) || 
+                                                                                                {_,T,Name} <- DW ];
+                _ ->  
+                        ToBeMatched = [ Pid || {_,T,Pid} <- DW, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
+                        %io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+                        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DW]]),
+                        %io:format("DDS: interested writers are: ~p\n", [ToBeMatched]),
+                        [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
                                                          Pref == Data#sedp_disc_endpoint_data.endpointGuid#guId.prefix],
-        Proxy = #reader_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
-                         unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
-                         multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
-        [ dds_data_w:remote_reader_add(Pid,Proxy) || Pid <- ToBeMatched ],
+                        Proxy = #reader_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
+                                unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
+                                multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
+                        [ dds_data_w:remote_reader_add(Pid,Proxy) || Pid <- ToBeMatched ]
+        end,
         {noreply,S};
 handle_cast(_, State) -> {noreply,State}.
 
 handle_info(_,State) -> {noreply,State}.
+
+
+terminate(Reason,#state{rtps_participant_info = P_info, data_writers = Writers, 
+                        builtin_pub_announcer = PubAnnouncer,
+                        builtin_sub_announcer = SubAnnouncer}) -> 
+        %[dds_data_w:write(builtin_sub_announcer,produce_unregistration_data(P_info,ID)) || {ID,_,_} <- Writers],
+        ok.
 
 % HELPERS
 produce_sedp_disc_enpoint_data(#participant{guid=#guId{prefix=P},vendorId=VID,protocolVersion=PVER},
@@ -121,4 +130,10 @@ produce_sedp_disc_enpoint_data(#participant{guid=#guId{prefix=P},vendorId=VID,pr
                 history_qos = H,
                 durability_qos = D,
                 reliability_qos = R
+        }.
+
+produce_sedp_endpoint_leaving(#participant{guid=#guId{prefix=P}},EntityID) -> 
+        #sedp_endpoint_state{
+                guid = #guId{prefix=P, entityId = EntityID},
+                status_flags = ?STATUS_INFO_UNREGISTERED + ?STATUS_INFO_DISPOSED
         }.

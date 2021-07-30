@@ -64,6 +64,7 @@ init({Participant,#endPoint{guid=GUID}=WriterConfig}) ->
         erlang:send_after(100,self(),heartbeat_loop),
         erlang:send_after(200,self(),write_loop),
         {ok,State}.
+
 terminate(_,_) -> io:format("I FULL WRITER DIED\n").
 
 handle_call({new_change,Data}, _, State) ->  

@@ -8,7 +8,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, open_unicast_locators/2, get_local_locators/1, open_multicast_locators/2]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/rtps_constants.hrl").
@@ -19,6 +19,7 @@
 
 
 pl_to_discov_part_data(D, []) -> D;
+pl_to_discov_part_data(D, [{status_info,S}|TL]) -> pl_to_discov_part_data(D#spdp_disc_part_data{status_qos=S}, TL);
 pl_to_discov_part_data(D, [{user_data,V}|TL]) -> pl_to_discov_part_data(D#spdp_disc_part_data{user_data=V}, TL);
 pl_to_discov_part_data(D, [{rtps_version,V}|TL]) -> pl_to_discov_part_data(D#spdp_disc_part_data{protocolVersion=V}, TL);
 pl_to_discov_part_data(D, [{vendor_id,V}|TL]) -> pl_to_discov_part_data(D#spdp_disc_part_data{vendorId=V}, TL);
@@ -35,6 +36,7 @@ pl_to_discov_part_data(D, [_|TL]) -> pl_to_discov_part_data(D,TL).
 pl_to_discovered_participant_data(P_list) ->pl_to_discov_part_data(#spdp_disc_part_data{}, P_list).
 
 pl_to_discov_endp_data(D, []) -> D;
+pl_to_discov_endp_data(D, [{status_info,S}|TL]) -> pl_to_discov_endp_data(D#sedp_disc_endpoint_data{status_qos=S}, TL);
 pl_to_discov_endp_data(D, [{rtps_version,V}|TL]) -> pl_to_discov_endp_data(D#sedp_disc_endpoint_data{protocolVersion=V}, TL);
 pl_to_discov_endp_data(D, [{vendor_id,V}|TL]) -> pl_to_discov_endp_data(D#sedp_disc_endpoint_data{vendorId=V}, TL);
 pl_to_discov_endp_data(D, [{topic_name,N}|TL]) -> pl_to_discov_endp_data(D#sedp_disc_endpoint_data{topic_name=N},TL);
@@ -47,17 +49,28 @@ pl_to_discov_endp_data(D, [_|TL]) -> pl_to_discov_endp_data(D,TL).
 pl_to_discovered_endpoint_data(P_list) -> pl_to_discov_endp_data(#sedp_disc_endpoint_data{}, P_list).
 
 % Data is a Parameter list in little endian
-handle_data({Reader,Writer, WriterSN,?PL_CDR_LE,SerializedPayload}) 
+handle_data({Reader,Writer, WriterSN,?PL_CDR_LE,SerializedPayload})  % SPDP with data
         when Writer == ?ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER -> 
         P_list = rtps_messages:parse_param_list(SerializedPayload),
         ParticipantData = pl_to_discovered_participant_data(P_list),
         {data, {Reader,Writer, WriterSN, ParticipantData}};
-handle_data({Reader,Writer, WriterSN,?PL_CDR_LE,SerializedPayload}) 
+handle_data({Reader,Writer, WriterSN,?PL_CDR_LE,SerializedPayload}) % SEDP with data
         when (Writer == ?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_ANNOUNCER) 
         or (Writer == ?ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_ANNOUNCER) -> 
         P_list = rtps_messages:parse_param_list(SerializedPayload),
         EndpointData = pl_to_discovered_endpoint_data(P_list),
         {data, {Reader,Writer, WriterSN, EndpointData}};
+handle_data({QOS_LIST,Reader,Writer, WriterSN,?PL_CDR_LE,SerializedPayload}) % SEDP with key and QOS
+        when (Writer == ?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_ANNOUNCER) 
+        or (Writer == ?ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_ANNOUNCER) -> 
+        P_list = rtps_messages:parse_param_list(SerializedPayload),
+        EndpointData = pl_to_discovered_endpoint_data(P_list ++ QOS_LIST),
+        {data, {Reader,Writer, WriterSN, EndpointData}};
+handle_data({QOS_LIST,Reader,Writer, WriterSN,?PL_CDR_LE,SerializedPayload}) % SPDP with key and QOS
+        when Writer == ?ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER -> 
+        P_list = rtps_messages:parse_param_list(SerializedPayload),
+        ParticipantData = pl_to_discovered_participant_data(P_list ++ QOS_LIST),
+        {data, {Reader,Writer, WriterSN, ParticipantData}};
 % Data is user-defined binary in little endian
 handle_data({Reader,Writer, WriterSN,?CDR_LE,SerializedPayload}) -> 
         {data, {Reader, Writer, WriterSN, SerializedPayload}};
@@ -164,7 +177,7 @@ open_multicast_locators(Name,LocatorList) ->
         gen_server:cast(Pid,{open_multicast_locators,LocatorList}).
 % call backs
 init(State) -> 
-        %io:format("~p.erl STARTED!\n",[?MODULE]),
+        process_flag(trap_exit, true),
         P = rtps_participant:get_info(participant),
         ID = {receiver_of,P#participant.guid#guId.prefix},
         pg:join(ID, self()),
@@ -181,6 +194,14 @@ handle_info({udp, Socket, Ip, Port, Packet}, State) ->
                 false -> io:format("Receiver: Bad packet\n")
         end,
         {noreply,State}.
+
+close_sockets([]) -> ok;
+close_sockets([{_,Socket,_,_}|TL]) -> 
+        gen_udp:close(Socket).
+
+terminate(Reason, #state{ openedSockets=Sockets}) -> 
+        close_sockets(Sockets),
+        io:format("~p terminating for reason: ~p\n",[?MODULE,Reason]).
 
 % callback helpers
 get_ipv4_from_opts([]) -> {0,0,0,0};

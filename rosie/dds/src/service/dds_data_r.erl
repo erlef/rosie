@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1,read/2,get_matched_publications/1, on_change_available/2,set_listener/2, remote_writer_add/2, match_remote_writers/2]).
+-export([start_link/1,read/2,get_matched_publications/1, on_change_available/2,set_listener/2, remote_writer_add/2, remote_writer_remove/2,match_remote_writers/2]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -28,6 +28,9 @@ match_remote_writers(Name, Writers) ->
 remote_writer_add(Name, W) ->       
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid, {remote_writer_add,W}).
+remote_writer_remove(Name, W) ->       
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {remote_writer_remove,W}).
 
 
 %callbacks 
@@ -60,5 +63,8 @@ handle_cast({match_remote_writers,Writers}, #state{matched_data_writers = DW, rt
 handle_cast({remote_writer_add,W}, #state{matched_data_writers = DW, rtps_reader= Reader} =S) -> 
         rtps_full_reader:matched_writer_add(Reader,W), 
         {noreply,S#state{matched_data_writers = [ W#writer_proxy.guid | DW ]}};
+handle_cast({remote_writer_remove,Writer}, #state{matched_data_writers = DW, rtps_reader= Reader} =S) -> 
+        rtps_full_reader:matched_writer_remove(Reader,Writer), 
+        {noreply,S#state{matched_data_writers = [ W || W <- DW, W /= Writer]}};
 handle_cast(_, State) -> {noreply,State}.
 handle_info(_,State) -> {noreply,State}.
