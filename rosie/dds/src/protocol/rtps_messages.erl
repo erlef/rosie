@@ -43,6 +43,17 @@ serialize_data_sub_msg(ReaderId,WriterId,WriterSN,Rappresentation_id,Data) ->
         Rappresentation_id:2/binary,
         0:16,% options usually unused
         Data/binary>>.
+serialize_data_sub_msg(ReaderId,WriterId,WriterSN,Rappresentation_id,Inline_QOS,Data) ->
+        <<0:16,%extra flags not used
+        16:16/little,% OctetsToInlineQos
+        (ReaderId#entityId.key):3/binary, (ReaderId#entityId.kind):8,
+        (WriterId#entityId.key):3/binary, (WriterId#entityId.kind):8,
+        0:32,% usually is all 0
+        WriterSN:32/little-signed-integer,
+        Inline_QOS/binary,
+        Rappresentation_id:2/binary,
+        0:16,% options usually unused
+        Data/binary>>.
 serialize_info_dst(GuidPrefix) ->         
         SubHead = serialize_sub_header(#subMessageHeader{
                 kind = ?SUB_MSG_KIND_INFO_DST,
@@ -64,6 +75,7 @@ serialize_info_timestamp() ->
 %parameters serialization
 serialize_param_list([],PL) -> PL;
 serialize_param_list([{sentinel,_}| TL],PL) -> P = <<?PID_SENTINEL:16/little,0:16/little>>,serialize_param_list(TL,[P|PL]);
+serialize_param_list([{status_info,S}| TL],PL) -> P = <<?PID_STATUS_INFO:16/little,4:16/little,S:32/big>>,serialize_param_list(TL,[P|PL]);
 serialize_param_list([{domain_id,V}| TL],PL) -> P = <<?PID_DOMAIN_ID:16/little,4:16/little,V:32>>, serialize_param_list(TL,[P|PL]);
 serialize_param_list([{rtps_version,V}| TL],PL) -> P = <<?PID_PROTOCOL_VERSION:16/little,4:16/little,V/binary,0:16>>, serialize_param_list(TL,[P|PL]);
 serialize_param_list([{vendor_id,V}| TL],PL) -> P = <<?PID_VENDOR_ID:16/little,4:16/little,V/binary,0:16>>, serialize_param_list(TL,[P|PL]);
@@ -104,6 +116,15 @@ serialize_param_list([{endpoint_guid,#guId{prefix=Prefix,entityId=ID}}| TL],PL) 
         serialize_param_list(TL,[P|PL]);
 serialize_param_list([_| TL],PL) -> serialize_param_list(TL,PL).
 serialize_param_list(PL) -> serialize_param_list(PL,[]).
+
+key_to_param_payload(#spdp_participant_state{guid = GUID, status_flags = S}) -> 
+        QL = list_to_binary(serialize_param_list([{sentinel,none},{status_info,S}])),
+        PL = list_to_binary(serialize_param_list([{sentinel,none},{participant_guid,GUID}])),
+        {QL,PL};
+key_to_param_payload(#sedp_endpoint_state{guid = GUID, status_flags = S}) -> 
+        QL = list_to_binary(serialize_param_list([{sentinel,none},{status_info,S}])),
+        PL = list_to_binary(serialize_param_list([{sentinel,none},{endpoint_guid,GUID}])),
+        {QL,PL}.
 
 sedp_data_to_param_payload(#sedp_disc_endpoint_data{
         protocolVersion = P_VER, vendorId = V_ID, reliability_qos = R_QOS, durability_qos = D_QOS,
@@ -158,6 +179,24 @@ serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=#s
                 kind = ?SUB_MSG_KIND_DATA,
                 length = byte_size(Body),
                 flags = <<0:5, 1:1, 0:1, 1:1>>
+        }),
+        <<SubHead/binary,Body/binary>>;
+serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=#sedp_endpoint_state{}=D}) -> 
+        {QL,PL} = key_to_param_payload(D),
+        Body = serialize_data_sub_msg(DST_READER_ID,W#guId.entityId,SN,?PL_CDR_LE,QL, PL),
+        SubHead = serialize_sub_header(#subMessageHeader{
+                kind = ?SUB_MSG_KIND_DATA,
+                length = byte_size(Body),
+                flags = <<0:4, 1:1, 0:1, 1:1, 1:1>> % key, no data and in-line QOS
+        }),
+        <<SubHead/binary,Body/binary>>;
+serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=#spdp_participant_state{}=D}) -> 
+        {QL,PL} = key_to_param_payload(D),
+        Body = serialize_data_sub_msg(DST_READER_ID,W#guId.entityId,SN,?PL_CDR_LE,QL, PL),
+        SubHead = serialize_sub_header(#subMessageHeader{
+                kind = ?SUB_MSG_KIND_DATA,
+                length = byte_size(Body),
+                flags = <<0:4, 1:1, 0:1, 1:1, 1:1>> % key, no data and in-line QOS
         }),
         <<SubHead/binary,Body/binary>>;
 serialize_data(DST_READER_ID,#cacheChange{writerGuid=W,sequenceNumber=SN,data=D}) -> 

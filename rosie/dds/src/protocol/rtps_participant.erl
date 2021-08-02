@@ -4,8 +4,8 @@
 -behaviour(gen_server).
 
 -export([start_link/0,get_spdp_writer_config/1,get_spdp_reader_config/1,send_to_all_readers/2,
-        get_discovered_participants/1,get_info/1,start_discovery/2,on_change_available/2]). %set_built_in_endpoints/2,
--export([init/1, terminate/2, handle_call/3, handle_cast/2,handle_info/2]).
+        get_discovered_participants/1,get_info/1,start_discovery/2,on_change_available/2,stop_discovery/1]). %set_built_in_endpoints/2,
+-export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/rtps_constants.hrl").
@@ -29,6 +29,8 @@ get_discovered_participants(Pid) ->
         gen_server:call(Pid,get_discovered_participants).
 start_discovery(Pid,EndPointSet) -> 
         gen_server:cast(Pid,{start_discovery,EndPointSet}).
+stop_discovery(Pid) -> 
+        gen_server:call(Pid,stop_discovery).
 send_to_all_readers(Pid, Msg) -> 
         gen_server:cast(Pid,{send_to_all_readers,Msg}).
 on_change_available(Pid, Msg) ->
@@ -37,7 +39,6 @@ on_change_available(Pid, Msg) ->
 %callbacks 
 
 init(S) -> 
-        process_flag(trap_exit, true),
         DomainID = 0,
         GuidPrefix = <<?VendorId_0:8,?VendorId_1:8,(crypto:strong_rand_bytes(10))/binary>>,
         Participant = #participant{guid=#guId{
@@ -65,12 +66,8 @@ handle_call(get_info, _, State) ->
         {reply,State#state.participant,State};
 handle_call(get_discovered_participants, _, State) -> 
         {reply,h_get_discovered_participants(State),State};
-% handle_call({create_full_writer,Setup,Cache}, _, #state{participant=P, writers_list=WL}=S) -> 
-%         {ok,W} = rtps_full_writer:create({P,Setup,Cache}),
-%         {reply, W, S#state{writers_list = WL ++ [W] }};
-% handle_call({create_full_reader,Setup,Cache}, _, #state{participant=P, readers_list=RL}=S) -> 
-%         {ok,R} = rtps_full_reader:create({P,Setup,Cache}),
-%         {reply, R, S#state{readers_list = RL ++ [R] }};
+handle_call(stop_discovery, _, State) -> 
+        {reply,h_stop_discovery(State),State};
 handle_call(_, _, State) -> 
         {reply,ok,State}.
 % handle_cast({set_built_in_endpoints,EndPointSet}, State) -> 
@@ -104,12 +101,14 @@ handle_info(discovery_loop,#state{spdp_reader_guid=R_GUID,spdp_writer_guid=W_GUI
         erlang:send_after(4000, self(), discovery_loop),
         {noreply,State}.
 
-terminate(Reason, State) -> 
-        io:format("~p terminating for reason: ~p\n",[?MODULE,Reason]).
-
-
 % Callbacks helpers
 % 
+h_stop_discovery(#state{participant = P, spdp_writer_guid = W_GUID}) ->
+        rtps_history_cache:remove_change({cache_of,W_GUID}, {W_GUID,1}),
+        Change = rtps_writer:new_change(W_GUID,produce_spdp_participant_leaving(P)),
+        rtps_history_cache:add_change({cache_of,W_GUID}, Change),
+        rtps_writer:flush_all_changes(W_GUID).
+
 h_get_discovered_participants(#state{spdp_reader_guid=R_GUID}=State) ->
         [W#guId.prefix ||  #cacheChange{writerGuid=W} <- rtps_history_cache:get_all_changes({cache_of,R_GUID})].
 
@@ -154,4 +153,11 @@ produce_SPDP_data(#participant{guid = ID}=P, EndPointSet) ->
                 meta_multi_locator_l= [ L || {Type,L} <- Locators, Type==multicast],
                 availableBuiltinEndpoints=EndPointSet,
                 leaseDuration=10
+        }.
+
+
+produce_spdp_participant_leaving(#participant{guid=G}) -> 
+        #spdp_participant_state{
+                guid = G,
+                status_flags = ?STATUS_INFO_UNREGISTERED + ?STATUS_INFO_DISPOSED
         }.

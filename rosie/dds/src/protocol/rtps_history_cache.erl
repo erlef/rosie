@@ -7,7 +7,7 @@
 -export([start_link/1,set_listener/2,add_change/2,remove_change/2,get_change/2,get_all_changes/1,get_min_seq_num/1,get_max_seq_num/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--record(state, { listener = not_set, cache=#{} }).
+-record(state, { listener, cache=#{} }).
 
 start_link(OwnerGUID) -> gen_server:start_link( ?MODULE, OwnerGUID, []).
 % API
@@ -16,7 +16,7 @@ set_listener(Name, L) ->
         gen_server:cast(Pid,{set_listener,L}).
 add_change(Name,Change) ->
         [Pid|_] = pg:get_members(Name), 
-        gen_server:cast(Pid,{add_change, Change}).
+        gen_server:call(Pid,{add_change, Change}).
 get_change(Name,{WriterGuid,SequenceNumber}) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{get_change,WriterGuid, SequenceNumber}).
@@ -40,13 +40,15 @@ init(OwnerGUID) ->
 handle_call(get_min_seq_num, _, State) -> {reply,h_get_min_seq_num(State),State};
 handle_call(get_max_seq_num, _, State) -> {reply,h_get_max_seq_num(State),State};
 handle_call({get_change, WriterGuid, SequenceNumber}, _, State) -> {reply,h_get_change(State,WriterGuid,SequenceNumber),State};
+handle_call({add_change, Change}, _,#state{listener = L}=S) when L == undefined -> {reply,ok,h_add_change(S, Change)};
+handle_call({add_change, Change}, _,#state{listener = {ID,Module}}=S) ->
+        Module:on_change_available(ID,{Change#cacheChange.writerGuid,Change#cacheChange.sequenceNumber}),
+        {reply,ok,h_add_change(S, Change)};
 handle_call({remove_change, WriterGuid, SequenceNumber}, _,State) -> {reply,ok,h_remove_change(State, WriterGuid,SequenceNumber)};
 handle_call(get_all_changes, _, State) -> {reply, maps:values(State#state.cache) , State}.
-handle_cast({set_listener, L}, State) -> {noreply,State#state{listener=L}};
-handle_cast({add_change, Change}, #state{listener = L}=S) when L == not_set -> {noreply,h_add_change(S, Change)};
-handle_cast({add_change, Change}, #state{listener = {ID,Module}}=S) ->
-        Module:on_change_available(ID,{Change#cacheChange.writerGuid,Change#cacheChange.sequenceNumber}),
-        {noreply,h_add_change(S, Change)}.
+
+handle_cast({set_listener, L}, State) -> {noreply,State#state{listener=L}}.
+
 handle_info(clean_up_loop,State) -> {noreply,State}.
 
 

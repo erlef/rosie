@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0,create_datareader/2,lookup_datareader/2,on_data_available/2]). %set_subscription_publisher/2,
+-export([start_link/0,create_datareader/2,lookup_datareader/2,on_data_available/2,dispose_data_readers/1]). %set_subscription_publisher/2,
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/dds_types.hrl").
@@ -26,6 +26,9 @@ create_datareader(Name,Topic) ->
 lookup_datareader(Name,Topic) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{lookup_datareader, Topic}).
+dispose_data_readers(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,dispose_data_readers).
 on_data_available(Name,{R,ChangeKey}) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid, {on_data_available, {R,ChangeKey}}).
@@ -68,16 +71,19 @@ handle_call({create_datareader,Topic}, _, #state{rtps_participant_info=P_info,
         % Endpoint subscription
         SubAnnouncer = dds_publisher:lookup_datawriter(dds_default_publisher,builtin_sub_announcer),
         dds_data_w:write(SubAnnouncer, produce_sedp_disc_enpoint_data(P_info, Topic, EntityID)),
-        {reply, {data_r_of, GUID}, S#state{data_readers = Readers ++ [{{data_r_of, GUID}, Topic}], incremental_key = K+1 }};
+        {reply, {data_r_of, GUID}, S#state{data_readers = Readers ++ [{EntityID, Topic, {data_r_of, GUID}}], incremental_key = K+1 }};
 
 handle_call({lookup_datareader, builtin_pub_detector}, _, State) -> 
         {reply,State#state.builtin_pub_detector,State};
 handle_call({lookup_datareader, builtin_sub_detector}, _, State) -> 
         {reply,State#state.builtin_sub_detector,State};
 handle_call({lookup_datareader, Topic}, _, #state{data_readers=DR}=State) -> 
-        [R|_] = [ Pid || {_,T,Pid} <- DR, T==Topic ],
+        [R|_] = [ Name || {_,T,Name} <- DR, T==Topic ],
         {reply, R, State};
-% handle_call({set_sub_publisher,Pub}, _, S) -> {reply,ok,S#state{subscription_publisher=Pub}};
+handle_call(dispose_data_readers, _, #state{rtps_participant_info= P_info, data_readers=DR}=State) -> 
+        Sub_announcer = dds_publisher:lookup_datawriter(dds_default_publisher, builtin_sub_announcer),
+        [ dds_data_w:write(Sub_announcer,  produce_sedp_endpoint_leaving(P_info, ID)) || {ID,_,_} <- DR],
+        {reply, ok, State#state{data_readers=[]}};
 handle_call(_, _, State) -> {reply,ok,State}.
 
 handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) -> 
@@ -121,4 +127,11 @@ produce_sedp_disc_enpoint_data(#participant{guid=#guId{prefix=P},vendorId=VID,pr
                 history_qos = H,
                 durability_qos = D,
                 reliability_qos = R
+        }.
+
+
+produce_sedp_endpoint_leaving(#participant{guid=#guId{prefix=P}},EntityID) -> 
+        #sedp_endpoint_state{
+                guid = #guId{prefix=P, entityId = EntityID},
+                status_flags = ?STATUS_INFO_UNREGISTERED + ?STATUS_INFO_DISPOSED
         }.

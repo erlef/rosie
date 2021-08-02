@@ -8,7 +8,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, open_unicast_locators/2, get_local_locators/1, open_multicast_locators/2]).
--export([init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/rtps_constants.hrl").
@@ -177,7 +177,6 @@ open_multicast_locators(Name,LocatorList) ->
         gen_server:cast(Pid,{open_multicast_locators,LocatorList}).
 % call backs
 init(State) -> 
-        process_flag(trap_exit, true),
         P = rtps_participant:get_info(participant),
         ID = {receiver_of,P#participant.guid#guId.prefix},
         pg:join(ID, self()),
@@ -198,10 +197,6 @@ handle_info({udp, Socket, Ip, Port, Packet}, State) ->
 close_sockets([]) -> ok;
 close_sockets([{_,Socket,_,_}|TL]) -> 
         gen_udp:close(Socket).
-
-terminate(Reason, #state{ openedSockets=Sockets}) -> 
-        close_sockets(Sockets),
-        io:format("~p terminating for reason: ~p\n",[?MODULE,Reason]).
 
 % callback helpers
 get_ipv4_from_opts([]) -> {0,0,0,0};

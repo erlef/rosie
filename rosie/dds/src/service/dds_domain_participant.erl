@@ -27,7 +27,7 @@ get_discovered_participants(Pid) -> gen_server:call(Pid,get_discovered_participa
 
 %callbacks 
 init(S) -> 
-        %process_flag(trap_exit, true),
+        process_flag(trap_exit, true),
         EndPointSet =
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_ANNOUNCER + 
                 ?DISC_BUILTIN_ENDPOINT_PARTICIPANT_DETECTOR +
@@ -68,8 +68,11 @@ handle_cast(_, State) -> {noreply,State}.
 
 handle_info(_,State) -> {noreply,State}.
 
-terminate(Reason,State) ->         
-        ok.
+terminate(Reason,#state{default_publisher=P,default_subscriber=S}) -> 
+        dds_subscriber:dispose_data_readers(S),
+        dds_publisher:dispose_data_writers(P),
+        rtps_participant:stop_discovery(participant),
+        receive after (500) -> ok end.
 
 %HELPERS
 filter_participants_with(PL, BUILTIN_ENDPOINT) -> 

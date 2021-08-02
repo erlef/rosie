@@ -151,5 +151,9 @@
         guid,
         status_flags
 }).
+-record(spdp_participant_state, {
+        guid,
+        status_flags
+}).
 
 -endif.

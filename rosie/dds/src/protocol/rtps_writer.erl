@@ -3,7 +3,8 @@
 
 -behaviour(gen_server).
 
--export([start_link/2,on_change_available/2,new_change/2,update_reader_locator_list/2,reader_locator_add/2,reader_locator_remove/2,unsent_changes_reset/1]).
+-export([start_link/2,on_change_available/2,new_change/2,update_reader_locator_list/2,
+        reader_locator_add/2,reader_locator_remove/2,unsent_changes_reset/1,flush_all_changes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -38,7 +39,10 @@ reader_locator_remove(Name,Locator)->
         gen_server:cast(Pid, {reader_locator_remove,Locator}).
 unsent_changes_reset(Name) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:cast(Pid, unsent_changes_reset).
+        gen_server:call(Pid, unsent_changes_reset).
+flush_all_changes(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid, flush_all_changes).
 
 
 % callbacks
@@ -54,12 +58,13 @@ init({Participant,#endPoint{guid=GUID}=WriterConfig}) ->
 handle_call({new_change,Data}, _, State) ->  
         {Change, NewState} = h_new_change(Data, State),
         {reply, Change, NewState};
+handle_call(unsent_changes_reset, _, State) -> {reply,ok,h_unsent_changes_reset(State)};
+handle_call(flush_all_changes, _, State) -> {reply,ok,h_flush_all_changes(State)};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_change_available, ChangeKey},S) -> {noreply, h_on_change_available(ChangeKey,S)};
 handle_cast({update_reader_locator_list, RL}, State) -> {noreply,h_update_reader_locator_list(RL,State)};
 handle_cast({reader_locator_add,Locator}, State) -> {noreply,h_reader_locator_add(Locator,State)};
 handle_cast({reader_locator_remove,Locator}, State) -> {noreply,h_reader_locator_remove(Locator,State)};
-handle_cast(unsent_changes_reset, State) -> {noreply,h_unsent_changes_reset(State)};
 handle_cast(_, State) -> {noreply,State}.
 
 handle_info(writer_loop,State) -> {noreply,writer_loop(State)}.
@@ -86,6 +91,9 @@ writer_loop(S) ->
         send_locators_changes(S),
         erlang:send_after(?WRITING_FREQ, self(), writer_loop),
         S.
+
+h_flush_all_changes(S) ->
+        send_locators_changes(S).
 
 h_new_change(D,#state{last_sequence_number=Last_SN,entity=E,history_cache=C}=S) -> 
         SN = Last_SN + 1,

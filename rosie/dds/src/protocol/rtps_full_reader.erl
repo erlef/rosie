@@ -65,7 +65,7 @@ handle_cast({receive_data, Data}, State) -> {noreply,h_receive_data(Data,State)}
 handle_cast({receive_heartbeat, HB}, State) ->  {noreply,h_receive_heartbeat(HB,State)};
 handle_cast({update_matched_writers, Proxies}, S) -> {noreply,h_update_matched_writers(Proxies, S)};
 handle_cast({matched_writer_add, Proxy}, S) -> {noreply,h_matched_writer_add(Proxy, S)};
-handle_cast({matched_writer_add, R}, S) -> {noreply,h_matched_writer_remove(R, S)};
+handle_cast({matched_writer_remove, R}, S) -> {noreply,h_matched_writer_remove(R, S)};
 handle_cast(_, State) -> {noreply,State}.
 
 handle_info({send_acknack_if_needed,{WGUID, FF}},State) ->  {noreply,h_send_acknack_if_needed(WGUID,FF,State)};

@@ -3,10 +3,11 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, write/2, get_matched_subscriptions/1, remote_reader_add/2, remote_reader_remove/2, match_remote_readers/2]).
+-export([start_link/1, write/2, get_matched_subscriptions/1, remote_reader_add/2, remote_reader_remove/2, match_remote_readers/2,wait_for_acknoledgements/1]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
+-include_lib("dds/include/rtps_constants.hrl").
 
 -record(state,{topic, rtps_writer, matched_data_readers = [] ,history_cache}).
 
@@ -27,6 +28,9 @@ remote_reader_remove(Name, R) ->
 write(Name, MSG) ->        
         [Pid|_] = pg:get_members(Name),
         gen_server:cast( Pid, {write, MSG}).
+wait_for_acknoledgements(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,wait_for_acknoledgements).
 
 %callbacks 
 init({Topic,#participant{guid=ID},GUID}) ->  
@@ -39,6 +43,8 @@ init({Topic,#participant{guid=ID},GUID}) ->
         
 handle_call(get_matched_subscriptions, _, #state{matched_data_readers = Matched}= S) -> 
         {reply,Matched,S};
+handle_call(wait_for_acknoledgements, _, #state{rtps_writer=W} = S) -> 
+        {reply, ok, S};
 handle_call(_, _, State) -> {reply,ok,State}.
 
 handle_cast({match_remote_readers,R}, #state{rtps_writer=W}=S) -> 

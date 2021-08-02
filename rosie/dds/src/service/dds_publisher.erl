@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, create_datawriter/2,lookup_datawriter/2,on_data_available/2]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
+-export([start_link/0, create_datawriter/2,lookup_datawriter/2,on_data_available/2,dispose_data_writers/1,wait_for_acknoledgements/1]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 
@@ -27,10 +27,12 @@ create_datawriter(Name,Topic) ->
 lookup_datawriter(Name,Topic) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{lookup_datawriter,Topic}).
-destory(Name) -> 
+dispose_data_writers(Name) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:call(Pid,destory).
-
+        gen_server:call(Pid,dispose_data_writers).
+wait_for_acknoledgements(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,wait_for_acknoledgements).
 %callbacks 
 init([]) ->  
         process_flag(trap_exit, true),
@@ -81,8 +83,12 @@ handle_call({lookup_datawriter,builtin_pub_announcer}, _, State) -> {reply,State
 handle_call({lookup_datawriter,Topic}, _, #state{data_writers=DW} = S) -> 
         [W|_] = [ Name || {_,T,Name} <- DW, T==Topic ],
         {reply, W, S};
-% handle_call(destory, _, #state{data_writers=DW} = S) ->
-%         {reply, W, S#state{}};
+handle_call(dispose_data_writers, _, #state{rtps_participant_info= P_info, builtin_pub_announcer = Pub_announcer, data_writers=DW} = S) -> 
+        [ dds_data_w:write(Pub_announcer, produce_sedp_endpoint_leaving(P_info,ID)) || {ID,_,_} <- DW],
+        {reply, ok, S};
+handle_call(wait_for_acknoledgements, _, #state{rtps_participant_info= P_info, builtin_pub_announcer = Pub_announcer, data_writers=DW} = S) -> 
+        [ dds_data_w:wait_for_acknoledgements(Pub_announcer) || {ID,_,_} <- DW],
+        {reply, ok, S};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_data_available,{R,ChangeKey}}, #state{data_writers=DW}=S) -> 
         Change = dds_data_r:read(R,ChangeKey),  %io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
@@ -108,12 +114,6 @@ handle_cast(_, State) -> {noreply,State}.
 
 handle_info(_,State) -> {noreply,State}.
 
-
-terminate(Reason,#state{rtps_participant_info = P_info, data_writers = Writers, 
-                        builtin_pub_announcer = PubAnnouncer,
-                        builtin_sub_announcer = SubAnnouncer}) -> 
-        %[dds_data_w:write(builtin_sub_announcer,produce_unregistration_data(P_info,ID)) || {ID,_,_} <- Writers],
-        ok.
 
 % HELPERS
 produce_sedp_disc_enpoint_data(#participant{guid=#guId{prefix=P},vendorId=VID,protocolVersion=PVER},
