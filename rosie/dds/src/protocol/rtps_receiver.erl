@@ -180,9 +180,9 @@ init(State) ->
         P = rtps_participant:get_info(participant),
         ID = {receiver_of,P#participant.guid#guId.prefix},
         pg:join(ID, self()),
-        open_unicast_locators(ID, P#participant.defaultUnicastLocatorList),
-        open_multicast_locators(ID, P#participant.defaultMulticastLocatorList),
-        {ok,State#state{destGuidPrefix = P#participant.guid#guId.prefix}}.
+        S1 = open_udp_locators(unicast,P#participant.defaultUnicastLocatorList,#state{}),
+        S2 = open_udp_locators(multicast,P#participant.defaultMulticastLocatorList,S1),
+        {ok,S2#state{destGuidPrefix = P#participant.guid#guId.prefix}}.
 handle_call(get_local_locators, _, State) -> {reply,h_get_local_locators(State),State};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({open_unicast_locators,List}, State) -> {noreply,open_udp_locators(unicast,List,State)};
@@ -200,9 +200,18 @@ close_sockets([{_,Socket,_,_}|TL]) ->
 
 % callback helpers
 get_ipv4_from_opts([]) -> {0,0,0,0};
-get_ipv4_from_opts([{addr,IP}|_]) -> IP;
+get_ipv4_from_opts([{addr,{_1,_2,_3,_4}}|_]) -> {_1,_2,_3,_4};
 get_ipv4_from_opts([_|TL]) -> get_ipv4_from_opts(TL).
-get_local_ip() -> {ok,[{Name,Config}|_]} = inet:getifaddrs(),  get_ipv4_from_opts(Config).
+
+flags_are_ok(Cfg) ->
+        [{flags,Flags}|_] = Cfg,
+        lists:member(up, Flags) and lists:member(running, Flags) and ( not lists:member(loopback, Flags)).
+
+get_local_ip() -> 
+        {ok,Interfaces} = inet:getifaddrs(),
+        % getting the first interface that is at least up and running and not for loopback
+        [Opts | _] = [ Cfg || {Name,Cfg} <- Interfaces, flags_are_ok(Cfg) ],
+        get_ipv4_from_opts(Opts).
 open_udp_locators(_,[],S) -> S;
 open_udp_locators(unicast, [#locator{ip = _,port=P}|TL], #state{openedSockets=Soc}=S ) ->       
         LocalInterface = get_local_ip(),  
@@ -217,5 +226,5 @@ open_udp_locators(multicast, [#locator{ip = IP,port=P}|TL], #state{openedSockets
         {ok, Port} = inet:port(Socket),
         open_udp_locators(multicast,TL,S#state{openedSockets=[{multicast,Socket,Port,IP}|Soc]}).
 
-h_get_local_locators(#state{openedSockets=Sockets}) ->
+h_get_local_locators(#state{openedSockets=Sockets}) -> %io:format("Asking locators: ~p\n",[Sockets]),
         [ {Type, #locator{kind=?LOCATOR_KIND_UDPv4,ip=I,port=P}} || {Type, S,P,I} <- Sockets].

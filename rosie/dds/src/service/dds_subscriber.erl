@@ -95,7 +95,7 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) ->
                                                                                         {_,T,Name} <- DR ];
                 _ ->     
                         ToBeMatched = [ ID || {ID,T} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-                        % io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+                        io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
                         %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T} <- DR]]),
                         %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
                         [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 

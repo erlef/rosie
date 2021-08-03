@@ -85,6 +85,7 @@ handle_call({lookup_datawriter,Topic}, _, #state{data_writers=DW} = S) ->
         {reply, W, S};
 handle_call(dispose_data_writers, _, #state{rtps_participant_info= P_info, builtin_pub_announcer = Pub_announcer, data_writers=DW} = S) -> 
         [ dds_data_w:write(Pub_announcer, produce_sedp_endpoint_leaving(P_info,ID)) || {ID,_,_} <- DW],
+        dds_data_w:flush_all_changes(Pub_announcer),
         {reply, ok, S};
 handle_call(wait_for_acknoledgements, _, #state{rtps_participant_info= P_info, builtin_pub_announcer = Pub_announcer, data_writers=DW} = S) -> 
         [ dds_data_w:wait_for_acknoledgements(Pub_announcer) || {ID,_,_} <- DW],
@@ -99,7 +100,7 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_writers=DW}=S) ->
                                                                                                 {_,T,Name} <- DW ];
                 _ ->  
                         ToBeMatched = [ Pid || {_,T,Pid} <- DW, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-                        %io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+                        io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
                         %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DW]]),
                         %io:format("DDS: interested writers are: ~p\n", [ToBeMatched]),
                         [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 

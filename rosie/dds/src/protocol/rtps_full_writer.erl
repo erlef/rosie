@@ -4,7 +4,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1,on_change_available/2,new_change/2,get_cache/1,update_matched_readers/2,
-        matched_reader_add/2,matched_reader_remove/2,is_acked_by_all/1,receive_acknack/2]).
+        matched_reader_add/2,matched_reader_remove/2,is_acked_by_all/1,receive_acknack/2,flush_all_changes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -51,6 +51,9 @@ receive_acknack(Name, Acknack) ->
 get_cache(Name) ->
         [Pid|_] = pg:get_members(Name), 
         gen_server:call(Pid,get_cache).
+flush_all_changes(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid, flush_all_changes).
 
 % callbacks
 init({Participant,#endPoint{guid=GUID}=WriterConfig}) -> 
@@ -72,6 +75,8 @@ handle_call({new_change,Data}, _, State) ->
         {reply, Change, NewState};
 handle_call(get_cache, _, State) -> {reply,State#state.history_cache,State};
 handle_call(is_acked_by_all, _, State) -> {reply,h_is_acked_by_all(State),State};
+handle_call(flush_all_changes, _, State) -> {reply,h_flush_all_changes(State),State};
+
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_change_available, ChangeKey},S) -> {noreply, h_on_change_available(ChangeKey,S)};
 handle_cast({update_matched_readers, Proxies}, State) -> {noreply,h_update_matched_readers(Proxies,State)};
@@ -228,3 +233,9 @@ h_receive_acknack(#acknack{readerGUID=RID,sn_range=Single},#state{reader_proxies
 h_receive_acknack(#acknack{readerGUID=RID,sn_range=Range},#state{reader_proxies=RP,history_cache=Cache} = S) ->
         Others = [ P || #reader_proxy{guid=G}=P <- RP, G /= RID],
         update_for_acknack([ P || #reader_proxy{guid=G}=P <- RP, G == RID], Others, Range, S).
+
+
+
+h_flush_all_changes(#state{entity=#endPoint{guid=#guId{prefix=Prefix}}, 
+                        history_cache = HC, datawrite_period=P, reader_proxies=RP} ) -> 
+        send_changes(unsent, Prefix,HC,RP).
