@@ -94,10 +94,10 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) ->
                 [ dds_data_r:remote_writer_remove(Name,Data#sedp_disc_endpoint_data.endpointGuid) || 
                                                                                         {_,T,Name} <- DR ];
                 _ ->     
-                        ToBeMatched = [ ID || {ID,T} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-                        io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
-                        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T} <- DR]]),
-                        %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
+                        ToBeMatched = [ Name || {_,T,Name} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
+                        % io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+                        % io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,_} <- DR]]),
+                        % io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
                         [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
                                                         Pref == Data#sedp_disc_endpoint_data.endpointGuid#guId.prefix],
                         Proxy = #writer_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
