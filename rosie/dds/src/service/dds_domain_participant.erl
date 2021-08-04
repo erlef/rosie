@@ -71,8 +71,7 @@ handle_info(_,State) -> {noreply,State}.
 terminate(Reason,#state{default_publisher=P,default_subscriber=S}) -> 
         dds_subscriber:dispose_data_readers(S),
         dds_publisher:dispose_data_writers(P),
-        rtps_participant:stop_discovery(participant),
-        receive after (1000) -> ok end.
+        rtps_participant:stop_discovery(participant).
 
 %HELPERS
 filter_participants_with(PL, BUILTIN_ENDPOINT) -> 

@@ -83,6 +83,7 @@ handle_call({lookup_datareader, Topic}, _, #state{data_readers=DR}=State) ->
 handle_call(dispose_data_readers, _, #state{rtps_participant_info= P_info, data_readers=DR}=State) -> 
         Sub_announcer = dds_publisher:lookup_datawriter(dds_default_publisher, builtin_sub_announcer),
         [ dds_data_w:write(Sub_announcer,  produce_sedp_endpoint_leaving(P_info, ID)) || {ID,_,_} <- DR],
+        dds_data_w:flush_all_changes(Sub_announcer),
         {reply, ok, State#state{data_readers=[]}};
 handle_call(_, _, State) -> {reply,ok,State}.
 

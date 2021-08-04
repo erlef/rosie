@@ -4,7 +4,8 @@
 -behaviour(gen_server).
 
 -export([start_link/0,get_spdp_writer_config/1,get_spdp_reader_config/1,send_to_all_readers/2,
-        get_discovered_participants/1,get_info/1,start_discovery/2,on_change_available/2,stop_discovery/1]). %set_built_in_endpoints/2,
+        get_discovered_participants/1,get_info/1,start_discovery/2,
+        on_change_available/2, on_change_removed/2, stop_discovery/1]). %set_built_in_endpoints/2,
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -35,6 +36,9 @@ send_to_all_readers(Pid, Msg) ->
         gen_server:cast(Pid,{send_to_all_readers,Msg}).
 on_change_available(Pid, Msg) ->
         gen_server:cast(Pid,{on_change_available,Msg}).
+on_change_removed(Pid, ChangeKey) -> 
+        %ignored
+        ok.
 
 %callbacks 
 

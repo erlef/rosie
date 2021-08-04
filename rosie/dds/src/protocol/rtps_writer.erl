@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/2,on_change_available/2,new_change/2,update_reader_locator_list/2,
+-export([start_link/2,on_change_available/2,on_change_removed/2,new_change/2,update_reader_locator_list/2,
         reader_locator_add/2,reader_locator_remove/2,unsent_changes_reset/1,flush_all_changes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
@@ -27,6 +27,9 @@ new_change(Name,Data) ->
 on_change_available(Name, ChangeKey) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid, {on_change_available, ChangeKey}).
+on_change_removed(Name, ChangeKey) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {on_change_removed, ChangeKey}).
 %Adds new locators if missing, removes old locators not specified in the call.
 update_reader_locator_list(Name, RL) -> 
         [Pid|_] = pg:get_members(Name),
@@ -62,6 +65,7 @@ handle_call(unsent_changes_reset, _, State) -> {reply,ok,h_unsent_changes_reset(
 handle_call(flush_all_changes, _, State) -> {reply,ok,h_flush_all_changes(State)};
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_change_available, ChangeKey},S) -> {noreply, h_on_change_available(ChangeKey,S)};
+handle_cast({on_change_removed, ChangeKey},S) -> {noreply, h_on_change_removed(ChangeKey,S)};
 handle_cast({update_reader_locator_list, RL}, State) -> {noreply,h_update_reader_locator_list(RL,State)};
 handle_cast({reader_locator_add,Locator}, State) -> {noreply,h_reader_locator_add(Locator,State)};
 handle_cast({reader_locator_remove,Locator}, State) -> {noreply,h_reader_locator_remove(Locator,State)};
@@ -131,3 +135,12 @@ add_change_to_locators(Change,[RL| TL],NewLocators) ->
 
 h_on_change_available(Key,#state{history_cache=C,reader_locators=L}=S) -> 
         S#state{reader_locators = add_change_to_locators(rtps_history_cache:get_change(C, Key), L)}.
+
+rm_change_from_locators(Key,RL) -> rm_change_from_locators(Key,RL,[]).
+rm_change_from_locators(_,[],NewRL) -> NewRL;
+rm_change_from_locators(Key,[RL| TL],NewLocators) ->  
+        ChangeList = [ C || #cacheChange{writerGuid=WG,sequenceNumber=SN}=C <- RL#reader_locator.unsent_changes , Key /= {WG,SN} ],
+        N_RL = RL#reader_locator{unsent_changes=ChangeList},
+        rm_change_from_locators(Key, TL, [N_RL|NewLocators]).
+h_on_change_removed(Key,#state{history_cache=C,reader_locators=L}=S) ->
+        S#state{reader_locators = rm_change_from_locators(Key, L)}.

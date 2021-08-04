@@ -8,7 +8,6 @@
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
--include_lib("dds/include/rtps_constants.hrl").
 
 -record(state,{topic, rtps_writer, matched_data_readers = [] ,history_cache}).
 

@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1,on_change_available/2,new_change/2,get_cache/1,update_matched_readers/2,
+-export([start_link/1,on_change_available/2,on_change_removed/2,new_change/2,get_cache/1,update_matched_readers/2,
         matched_reader_add/2,matched_reader_remove/2,is_acked_by_all/1,receive_acknack/2,flush_all_changes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -32,6 +32,9 @@ new_change(Name,Data) ->
 on_change_available(Name, ChangeKey) ->         
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid, {on_change_available, ChangeKey}).
+on_change_removed(Name, ChangeKey) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:cast(Pid, {on_change_removed, ChangeKey}).
 %Adds new locators if missing, removes old locators not specified in the call.
 update_matched_readers(Name, R) ->         
         [Pid|_] = pg:get_members(Name),
@@ -79,6 +82,7 @@ handle_call(flush_all_changes, _, State) -> {reply,h_flush_all_changes(State),St
 
 handle_call(_, _, State) -> {reply,ok,State}.
 handle_cast({on_change_available, ChangeKey},S) -> {noreply, h_on_change_available(ChangeKey,S)};
+handle_cast({on_change_removed, ChangeKey},S) -> {noreply, h_on_change_removed(ChangeKey,S)};
 handle_cast({update_matched_readers, Proxies}, State) -> {noreply,h_update_matched_readers(Proxies,State)};
 handle_cast({matched_reader_add,Proxy}, State) -> {noreply,h_matched_reader_add(Proxy,State)};
 handle_cast({matched_reader_remove,Guid}, State) -> {noreply,h_matched_reader_remove(Guid,State)};
@@ -207,6 +211,16 @@ add_change_to_proxies(Key,[Proxy| TL],NewProxies, Push=false)->
 
 h_on_change_available(Key,#state{history_cache=C,reader_proxies=RP, push_mode=Push}=S) -> 
         S#state{reader_proxies = add_change_to_proxies( Key, RP, Push)}.
+
+rm_change_from_proxies(Key,Proxies) -> rm_change_from_proxies(Key,Proxies,[]).
+rm_change_from_proxies(_,[],NewPR) -> NewPR;
+rm_change_from_proxies(Key,[Proxy| TL],NewProxies)-> 
+        ChangeList = [ C || #change_for_reader{change_key = K} = C <- Proxy#reader_proxy.changes_for_reader, K /= Key],
+        New_PR = Proxy#reader_proxy{changes_for_reader = ChangeList},
+        rm_change_from_proxies(Key, TL, [New_PR|NewProxies]).
+h_on_change_removed(Key,#state{history_cache=C,reader_proxies=RP}=S) -> 
+        S#state{reader_proxies = rm_change_from_proxies( Key, RP)}.
+
 
 update_for_acknack([], _, _, S) -> S;
 update_for_acknack([#reader_proxy{changes_for_reader=Changes}=Proxy|_], Others, Missed, S) -> 

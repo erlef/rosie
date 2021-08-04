@@ -59,8 +59,12 @@ h_get_change(#state{cache=C},WriterGuid,SequenceNumber) ->
                 {ok,Change} -> Change; 
                 error -> not_found
         end.
-h_remove_change(#state{cache=C}=State,WriterGuid,SequenceNumber) -> State#state{cache = maps:remove({WriterGuid,SequenceNumber}, C)}.
 
+h_remove_change(#state{cache=C, listener = {ID,Module}}=State,WriterGuid,SequenceNumber)-> 
+        Module:on_change_removed(ID,{WriterGuid,SequenceNumber}),
+        State#state{cache = maps:remove({WriterGuid,SequenceNumber}, C)};
+h_remove_change(#state{cache=C}=State,WriterGuid,SequenceNumber) -> 
+        State#state{cache = maps:remove({WriterGuid,SequenceNumber}, C)}.
 h_get_min_seq_num(#state{cache=C}) -> 
         case maps:size(C) of 0 -> 1; _ -> lists:min([ SN || {_,SN} <- maps:keys(C)]) end.
 h_get_max_seq_num(#state{cache=C}) ->  
@@ -68,9 +72,9 @@ h_get_max_seq_num(#state{cache=C}) ->
 
 
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--include("rtps_constants.hrl").
+% -ifdef(TEST).
+% -include_lib("eunit/include/eunit.hrl").
+% -include("rtps_constants.hrl").
 
 % history_cache_test() -> 
 %         {ok, Cache } = rtps_history_cache:new(),
@@ -109,4 +113,4 @@ h_get_max_seq_num(#state{cache=C}) ->
 
 
 
--endif.
+% -endif.

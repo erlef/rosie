@@ -3,7 +3,9 @@
 
 -behaviour(gen_server).
 
--export([start_link/1,read/2,get_matched_publications/1, on_change_available/2,set_listener/2, remote_writer_add/2, remote_writer_remove/2,match_remote_writers/2]).
+-export([start_link/1,read/2,get_matched_publications/1, 
+        on_change_available/2,on_change_removed/2,set_listener/2, remote_writer_add/2, 
+        remote_writer_remove/2,match_remote_writers/2]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -16,6 +18,9 @@ get_matched_publications(Name) ->
 on_change_available(Name, ChangeKey) ->       
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid, {on_change_available, ChangeKey}).
+on_change_removed(Name, ChangeKey) -> 
+        io:format("on_change_removed/2 Not implemented in ~p\n",[?MODULE]),
+        ok.
 set_listener(Name, Listener) ->        
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid, {set_listener, Listener}).
