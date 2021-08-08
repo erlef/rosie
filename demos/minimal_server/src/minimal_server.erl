@@ -21,7 +21,7 @@ handle_request({A,B}) ->
 init(S) -> 
         Node = ros_context:create_node("minimal_server"),
 
-        Service = ros_node:create_service(Node, add_two_ints_srv, fun handle_request/1),
+        Service = ros_node:create_service(Node, add_two_ints, fun handle_request/1),
 
         {ok,S#state{ros_node=Node, ros_service=Service}}.
 handle_call(_,_,S) -> {reply,ok,S}.

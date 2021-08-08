@@ -24,7 +24,7 @@ print_result(Msg) ->
 init(_) -> 
         Node = ros_context:create_node("minimal_client"),
 
-        Client = ros_node:create_client(Node, add_two_ints_srv, fun print_result/1),
+        Client = ros_node:create_client(Node, add_two_ints, fun print_result/1),
 
         {ok,#state{ros_node=Node, add_client = Client}}.
 

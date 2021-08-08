@@ -6,7 +6,8 @@
   {applications,
    [kernel,
     stdlib,
-    ros
+    ros,
+    shared_interfaces
    ]},
   {env,[]},
   {modules, []},

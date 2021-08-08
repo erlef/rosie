@@ -2,6 +2,7 @@
  [{description, "Interfaces for services, messages and actions used by the demos"},
   {vsn, "0.1.0"},
   {registered, []},
+  {mod, {shared_interfaces_app, []}},
   {applications,
    [kernel,
     stdlib
