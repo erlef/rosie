@@ -113,18 +113,21 @@ available_change_max([]) -> 0;
 available_change_max(ChangeList) -> lists:max([ SN || #change_from_writer{change_key={_,SN}} <- ChangeList]).
 % 0 means flag not set, an acknowledgment must be sent
 h_send_acknack_if_needed(WGUID, 0, #state{writer_proxies = WP}=S) -> 
-        [P|_] = [ P || #writer_proxy{guid=G}=P <- WP, G == WGUID],
-        case filter_missing_sn(P#writer_proxy.changes_from_writer) of 
-                [] -> Missing = available_change_max(P#writer_proxy.changes_from_writer) + 1;
-                List -> Missing = List
-        end,
-        send_acknack( WGUID, Missing, S);
+        case [ P || #writer_proxy{guid=G}=P <- WP, G == WGUID] of
+                [P|_] -> case filter_missing_sn(P#writer_proxy.changes_from_writer) of 
+                                [] -> Missing = available_change_max(P#writer_proxy.changes_from_writer) + 1;
+                                List -> Missing = List
+                        end, send_acknack( WGUID, Missing, S);
+                [] -> ok
+        end;
 % 1 means flag set, i acknoledge only if i know to miss some data
 h_send_acknack_if_needed(WGUID, 1, #state{writer_proxies = WP}=S) -> 
-        [P|_] = [ P || #writer_proxy{guid=G}=P <- WP, G == WGUID],
-        case filter_missing_sn(P#writer_proxy.changes_from_writer) of 
-                [] -> S;
-                List -> send_acknack( WGUID, List, S)
+        case [ P || #writer_proxy{guid=G}=P <- WP, G == WGUID] of
+                [P|_] -> case filter_missing_sn(P#writer_proxy.changes_from_writer) of 
+                                [] -> S;
+                                List -> send_acknack( WGUID, List, S)
+                        end;
+                [] -> ok
         end.
 
 send_acknack(WGUID,Missing,#state{entity=#endPoint{guid=RGUID},writer_proxies=WP,acknack_count=C}=S) -> 

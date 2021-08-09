@@ -209,8 +209,11 @@ add_change_to_proxies(Key,[Proxy| TL],NewProxies, Push=false)->
         New_PR = Proxy#reader_proxy{changes_for_reader = ChangeList},
         add_change_to_proxies(Key, TL, [New_PR|NewProxies],Push).
 
-h_on_change_available(Key,#state{history_cache=C,reader_proxies=RP, push_mode=Push}=S) -> 
-        S#state{reader_proxies = add_change_to_proxies( Key, RP, Push)}.
+h_on_change_available(Key,#state{entity=#endPoint{guid=#guId{prefix=Prefix}},history_cache=HC,reader_proxies=RP, push_mode=Push}=S) -> 
+        ReaderProxies = add_change_to_proxies( Key, RP, Push),
+        % instantly send changes that are to be pushed
+        ProxiesPushed = send_changes(unsent, Prefix, HC, ReaderProxies),
+        S#state{reader_proxies = ProxiesPushed}.
 
 rm_change_from_proxies(Key,Proxies) -> rm_change_from_proxies(Key,Proxies,[]).
 rm_change_from_proxies(_,[],NewPR) -> NewPR;
