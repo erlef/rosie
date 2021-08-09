@@ -3,7 +3,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/1,read/2,get_matched_publications/1, 
+-export([start_link/1,read/2,get_matched_publications/1, read_all/1,
         on_change_available/2,on_change_removed/2,set_listener/2, remote_writer_add/2, 
         remote_writer_remove/2,match_remote_writers/2]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
@@ -27,6 +27,9 @@ set_listener(Name, Listener) ->
 read(Name, Change) ->        
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid, {read, Change}).
+read_all(Name)->        
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid, read_all).
 match_remote_writers(Name, Writers) ->        
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid,{match_remote_writers,Writers}).
@@ -52,6 +55,8 @@ handle_call(get_matched_publications, _, #state{matched_data_writers = Matched}=
         {reply,Matched,S};
 handle_call({read, ChangeKey}, _, #state{history_cache=C}=S) -> 
         {reply,rtps_history_cache:get_change(C,ChangeKey),S};
+handle_call(read_all, _, #state{history_cache=C}=S) -> 
+        {reply,rtps_history_cache:get_all_changes(C),S};
 handle_call({set_listener, L}, _, State) -> 
         {reply,ok,State#state{listener=L}};
 handle_call(_, _, State) -> 

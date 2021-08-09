@@ -58,8 +58,8 @@ init(#state{service_handle = Service}=S) ->
 
 
 handle_call(service_is_ready, _, #state{dds_data_writer=DW, dds_data_reader=DR} = S) ->
-        Pubs = dds_data_r:get_matched_publications(DR),
-        Subs = dds_data_w:get_matched_subscriptions(DW),
+        Pubs = dds_data_r:get_matched_publications(DR), %io:format("~p\n",[Pubs]),
+        Subs = dds_data_w:get_matched_subscriptions(DW), %io:format("~p\n",[Subs]),
         case (length(Pubs) > 0) and (length(Subs) > 0) of
                 true -> {reply, true, S};
                 false -> {reply, false, S}

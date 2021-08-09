@@ -68,6 +68,9 @@ handle_call({create_datareader,Topic}, _, #state{rtps_participant_info=P_info,
         Config = #endPoint{guid = GUID}, 
         {ok,_} = supervisor:start_child(dds_datareaders_pool_sup,
                                 [{data_reader, Topic, P_info, Config}]),
+
+        match_with_discovered_writers({data_r_of,GUID},Topic,S),
+
         % Endpoint subscription
         SubAnnouncer = dds_publisher:lookup_datawriter(dds_default_publisher,builtin_sub_announcer),
         dds_data_w:write(SubAnnouncer, produce_sedp_disc_enpoint_data(P_info, Topic, EntityID)),
@@ -96,15 +99,11 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) ->
                                                                                         {_,T,Name} <- DR ];
                 _ ->     
                         ToBeMatched = [ Name || {_,T,Name} <- DR, T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
-                        % io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
-                        % io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,_} <- DR]]),
-                        % io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
-                        [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- dds_domain_participant:get_discovered_participants(dds), 
-                                                        Pref == Data#sedp_disc_endpoint_data.endpointGuid#guId.prefix],
-                        Proxy = #writer_proxy{guid = Data#sedp_disc_endpoint_data.endpointGuid,        
-                                        unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
-                                        multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
-                        [ dds_data_r:remote_writer_add(ID,Proxy) || ID <- ToBeMatched ]
+                        %io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
+                        %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,_} <- DR]]),
+                        %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
+                        Participants = dds_domain_participant:get_discovered_participants(dds),
+                        [ match_reader_with_writer(Pid,Data,Participants) || Pid <- ToBeMatched ]
         end,
         {noreply,S};
 handle_cast(_, State) -> {noreply,State}.
@@ -136,3 +135,21 @@ produce_sedp_endpoint_leaving(#participant{guid=#guId{prefix=P}},EntityID) ->
                 guid = #guId{prefix=P, entityId = EntityID},
                 status_flags = ?STATUS_INFO_UNREGISTERED + ?STATUS_INFO_DISPOSED
         }.
+
+
+match_with_discovered_writers(DR,#user_topic{name=Tname,type_name=Ttype},#state{builtin_pub_detector=PubDetector}) ->
+        RemoteWriters = [ D || #cacheChange{data=D} <- dds_data_r:read_all(PubDetector)],
+        %io:format("Remote writers for topic ~p are ~p\n",[Tname,RemoteWriters]),
+        ToBeMatched = [ W || #sedp_disc_endpoint_data{topic_name=N}=W <- RemoteWriters,N == Tname],        
+        Participants = dds_domain_participant:get_discovered_participants(dds),
+        [match_reader_with_writer(DR, W, Participants) || W <- ToBeMatched].
+
+
+match_reader_with_writer(DR,WriterData,Participants) ->
+        [P|_] = [P || #spdp_disc_part_data{guidPrefix = Pref}=P <- Participants, 
+                Pref == WriterData#sedp_disc_endpoint_data.endpointGuid#guId.prefix],
+        Proxy = #writer_proxy{guid = WriterData#sedp_disc_endpoint_data.endpointGuid,        
+                unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
+                multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
+        %io:format("Matching: ~p with ~p\n",[DR,Proxy]),
+        dds_data_r:remote_writer_add(DR,Proxy).
