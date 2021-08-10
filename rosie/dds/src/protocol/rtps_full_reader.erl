@@ -118,7 +118,7 @@ h_send_acknack_if_needed(WGUID, 0, #state{writer_proxies = WP}=S) ->
                                 [] -> Missing = available_change_max(P#writer_proxy.changes_from_writer) + 1;
                                 List -> Missing = List
                         end, send_acknack( WGUID, Missing, S);
-                [] -> ok
+                [] -> S
         end;
 % 1 means flag set, i acknoledge only if i know to miss some data
 h_send_acknack_if_needed(WGUID, 1, #state{writer_proxies = WP}=S) -> 
@@ -127,7 +127,7 @@ h_send_acknack_if_needed(WGUID, 1, #state{writer_proxies = WP}=S) ->
                                 [] -> S;
                                 List -> send_acknack( WGUID, List, S)
                         end;
-                [] -> ok
+                [] -> S
         end.
 
 send_acknack(WGUID,Missing,#state{entity=#endPoint{guid=RGUID},writer_proxies=WP,acknack_count=C}=S) -> 
