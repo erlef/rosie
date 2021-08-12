@@ -5,18 +5,26 @@
 
 -export([start_link/1,on_change_available/2,on_change_removed/2,new_change/2,get_cache/1,update_matched_readers/2,
         matched_reader_add/2,matched_reader_remove/2,is_acked_by_all/1,receive_acknack/2,flush_all_changes/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/rtps_constants.hrl").
 
+-define(DEFAULT_WRITE_PERIOD, 1000).
+-define(DEFAULT_HEARTBEAT_PERIOD, 1000).
+-define(DEFAULT_NACK_RESPONCE_DELAY, 200).
+
 -record(state,{
         participant = #participant{},
         entity = #endPoint{},
-        datawrite_period= 1000, % default at 1000
-        heatbeat_period= 1000, % default at 1000
+        % default periods are divided by 10 to both speedup data exchange and prevent some annoing thigs as example:
+        % If the heartbeat period is too slow the instance could add a sample before the first heartbeat is produced,
+        % in some applications (other DDS vendors) this leads to them ignoring the first data sample added in the history cache.
+        % This is particularly problematic if the remote is a ros2 clients that blocks if does not receive the correct sample.
+        datawrite_period= ?DEFAULT_WRITE_PERIOD div 10, % default at 1000
+        heatbeat_period= ?DEFAULT_HEARTBEAT_PERIOD div 10, % default at 1000
+        nackResponseDelay= ?DEFAULT_NACK_RESPONCE_DELAY div 10, % default at 200
         heatbeat_count= 1,
-        nackResponseDelay= 200, % default at 200
         nackSuppressionDuration= 0,
         push_mode = true,
         history_cache,
@@ -67,11 +75,9 @@ init({Participant,#endPoint{guid=GUID}=WriterConfig}) ->
                         history_cache = {cache_of, GUID}},
         rtps_history_cache:set_listener({cache_of, GUID}, {GUID,?MODULE}),
         
-        erlang:send_after(100,self(),heartbeat_loop),
-        erlang:send_after(200,self(),write_loop),
+        erlang:send_after(1,self(),heartbeat_loop),
+        erlang:send_after(1,self(),write_loop),
         {ok,State}.
-
-terminate(_,_) -> io:format("I FULL WRITER DIED\n").
 
 handle_call({new_change,Data}, _, State) ->  
         {Change, NewState} = h_new_change(Data, State),
@@ -123,7 +129,7 @@ send_heartbeat(#state{entity=#endPoint{guid=GUID}, history_cache=C, heatbeat_cou
 
 heartbeat_loop(#state{heatbeat_period=HP,heatbeat_count=C}=S) -> 
         send_heartbeat(S),
-        erlang:send_after(1000, self(), heartbeat_loop),
+        erlang:send_after(HP, self(), heartbeat_loop),
         S#state{heatbeat_count=C+1}.
 
 

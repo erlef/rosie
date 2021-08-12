@@ -1,4 +1,4 @@
--module(minimal_server_sup).
+-module(minimal_service_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -24,8 +24,8 @@ init([]) ->
     SupFlags = #{strategy => one_for_all,
                  intensity => 0,
                  period => 1},
-    Server =  #{id => minimal_server,
-             start => {minimal_server, start_link, []},
+    Server =  #{id => minimal_service,
+             start => {minimal_service, start_link, []},
              restart => transient,  
              shutdown => 5000,
              type => worker},

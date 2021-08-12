@@ -1,4 +1,4 @@
--module(minimal_server).
+-module(minimal_service).
 
 -behaviour(gen_server).
 
