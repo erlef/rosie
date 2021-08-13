@@ -114,7 +114,7 @@ h_stop_discovery(#state{participant = P, spdp_writer_guid = W_GUID}) ->
         rtps_writer:flush_all_changes(W_GUID).
 
 h_get_discovered_participants(#state{spdp_reader_guid=R_GUID}=State) ->
-        [W#guId.prefix ||  #cacheChange{writerGuid=W} <- rtps_history_cache:get_all_changes({cache_of,R_GUID})].
+        [D||  #cacheChange{data=D} <- rtps_history_cache:get_all_changes({cache_of,R_GUID})].
 
 
 h_send_to_all_readers(#heartbeat{}=HB) -> 

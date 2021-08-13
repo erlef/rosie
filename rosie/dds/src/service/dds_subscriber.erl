@@ -102,7 +102,7 @@ handle_cast({on_data_available,{R,ChangeKey}}, #state{data_readers=DR}=S) ->
                         %io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
                         %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,_} <- DR]]),
                         %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
-                        Participants = dds_domain_participant:get_discovered_participants(dds),
+                        Participants = rtps_participant:get_discovered_participants(participant),
                         [ match_reader_with_writer(Pid,Data,Participants) || Pid <- ToBeMatched ]
         end,
         {noreply,S};
@@ -141,7 +141,7 @@ match_with_discovered_writers(DR,#user_topic{name=Tname,type_name=Ttype},#state{
         RemoteWriters = [ D || #cacheChange{data=D} <- dds_data_r:read_all(PubDetector)],
         %io:format("Remote writers for topic ~p are ~p\n",[Tname,RemoteWriters]),
         ToBeMatched = [ W || #sedp_disc_endpoint_data{topic_name=N}=W <- RemoteWriters,N == Tname],        
-        Participants = dds_domain_participant:get_discovered_participants(dds),
+        Participants = rtps_participant:get_discovered_participants(participant),
         [match_reader_with_writer(DR, W, Participants) || W <- ToBeMatched].
 
 
