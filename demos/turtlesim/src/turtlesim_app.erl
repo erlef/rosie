@@ -1,4 +1,4 @@
--module(turtle_controller_app).
+-module(turtlesim_app).
 
 -behaviour(application).
 

@@ -18,7 +18,7 @@ ask(Pid,Info) ->
         gen_server:call(Pid,{ask,Info}).
 ask_async(Pid,Info) ->
         gen_server:cast(Pid,{ask_async,Info}).
-print_result(Msg) -> 
+print_result({Msg}) -> 
         io:format("Result: ~p\n",[Msg]).
 
 init(_) -> 
@@ -30,7 +30,8 @@ init(_) ->
 
 handle_call({ask,{A,B}}, _, #state{add_client=C} = S) -> 
         case ros_client:service_is_ready(C) of
-                true ->  {reply, ros_client:call(C, {A,B}), S};
+                true -> {R} = ros_client:call(C, {A,B}), 
+                        {reply, R, S};
                 false -> {reply, server_unavailable, S}
         end;
 handle_call(_,_,S) -> {reply,ok,S}.

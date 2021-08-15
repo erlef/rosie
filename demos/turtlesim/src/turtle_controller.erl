@@ -19,7 +19,7 @@ spawn_turtle(Pid,Info) ->
         gen_server:call(Pid,{spawn_turtle,Info}).
 spawn_turtle_async(Pid,Info) ->
         gen_server:cast(Pid,{spawn_turtle_async,Info}).
-print_spawn_responce(Msg) -> 
+print_spawn_responce({Msg}) -> 
         io:format("Spawn reply: ~s\n",[Msg]).
 
 init(_) -> 
@@ -28,13 +28,14 @@ init(_) ->
         ChatterTopic = #user_topic{type_name=?msg_twist_topic_type , name="turtle1/cmd_vel"},
         Pub = ros_node:create_publisher(Node, ChatterTopic),
 
-        Client = ros_node:create_client(Node, spawn_srv, fun print_spawn_responce/1),
+        Client = ros_node:create_client(Node, spawn, fun print_spawn_responce/1),
 
         {ok,#state{ros_node=Node, chatter_pub=Pub, spawn__client = Client}}.
 
 handle_call({spawn_turtle,{X, Y, Angle, Name}}, _, #state{spawn__client=C} = S) -> 
         case ros_client:service_is_ready(C) of
-                true ->  {reply, ros_client:call(C, {X, Y, Angle, Name}), S};
+                true ->  {R} = ros_client:call(C, {X, Y, Angle, Name}),
+                         {reply, R, S};
                 false -> {reply, server_unavailable, S}
         end;
 handle_call(_,_,S) -> {reply,ok,S}.

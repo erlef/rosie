@@ -1,12 +1,10 @@
-{application, turtle_controller,
- [{description, "turtle_controller"},
+{application, example_interfaces,
+ [{description, "Interfaces for services, messages and actions used by the demos"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, {turtle_controller_app, []}},
   {applications,
    [kernel,
-    stdlib,
-    ros
+    stdlib
    ]},
   {env,[]},
   {modules, []},

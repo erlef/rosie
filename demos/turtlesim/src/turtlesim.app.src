@@ -1,10 +1,12 @@
-{application, shared_interfaces,
- [{description, "Interfaces for services, messages and actions used by the demos"},
+{application, turtlesim,
+ [{description, "turtle controller for turtlesim"},
   {vsn, "0.1.0"},
   {registered, []},
+  {mod, {turtlesim_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    ros
    ]},
   {env,[]},
   {modules, []},

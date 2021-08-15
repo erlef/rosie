@@ -7,7 +7,7 @@
    [kernel,
     stdlib,
     ros,
-    shared_interfaces
+    example_interfaces
    ]},
   {env,[]},
   {modules, []},
