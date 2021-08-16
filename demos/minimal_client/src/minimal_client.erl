@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 
--export([start_link/0, ask/2, ask_async/2]).
+-export([start_link/0, ask/1, ask_async/1]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -include_lib("dds/include/dds_types.hrl").
@@ -12,12 +12,14 @@
 -record(state,{ ros_node,
                 add_client}).
 
+-define(LOCAL_SRV, client).
+
 start_link() -> 
-        gen_server:start_link({local, client},?MODULE, [], []).
-ask(Pid,Info) ->
-        gen_server:call(Pid,{ask,Info}).
-ask_async(Pid,Info) ->
-        gen_server:cast(Pid,{ask_async,Info}).
+        gen_server:start_link({local, ?LOCAL_SRV},?MODULE, [], []).
+ask(Info) ->
+        gen_server:call(?LOCAL_SRV,{ask,Info}).
+ask_async(Info) ->
+        gen_server:cast(?LOCAL_SRV,{ask_async,Info}).
 print_result({Msg}) -> 
         io:format("Result: ~p\n",[Msg]).
 

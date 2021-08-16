@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 
--export([start_link/0, spawn_turtle/2, spawn_turtle_async/2]).
+-export([start_link/0, spawn/2, spawn_async/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/dds_types.hrl").
@@ -15,9 +15,9 @@
 
 start_link() -> 
         gen_server:start_link({local, turtle},?MODULE, [], []).
-spawn_turtle(Pid,Info) ->
+spawn(Pid,Info) ->
         gen_server:call(Pid,{spawn_turtle,Info}).
-spawn_turtle_async(Pid,Info) ->
+spawn_async(Pid,Info) ->
         gen_server:cast(Pid,{spawn_turtle_async,Info}).
 print_spawn_responce({Msg}) -> 
         io:format("Spawn reply: ~s\n",[Msg]).

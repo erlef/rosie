@@ -1,12 +1,10 @@
-{application, minimal_service,
- [{description, "Example service"},
+{application, std_msgs,
+ [{description, "Basic messages for ros2"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, {minimal_service_app, []}},
   {applications,
    [kernel,
-    stdlib,
-    ros
+    stdlib
    ]},
   {env,[]},
   {modules, []},

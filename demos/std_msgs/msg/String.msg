@@ -1,2 +1,2 @@
 # This is a comment
-String message
+string message

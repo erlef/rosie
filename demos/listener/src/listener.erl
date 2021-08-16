@@ -20,7 +20,7 @@ init(S) ->
 
         Node = ros_context:create_node("listener"),
         
-        ChatterTopic = #user_topic{type_name=?msg_string_topic_type , name="chatter"},
+        ChatterTopic = #user_topic{type_name= string_msg:get_type() , name="chatter"},
         ros_node:create_subscription(Node, ChatterTopic, fun receive_chat/1),
 
         {ok,S}.

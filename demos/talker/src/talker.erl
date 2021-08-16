@@ -22,7 +22,7 @@ receive_chat(Msg) ->
 init(#state{period=P}=S) -> 
         Node = ros_context:create_node("talker"),
         
-        ChatterTopic = #user_topic{type_name=?msg_string_topic_type , name="chatter"},
+        ChatterTopic = #user_topic{type_name = string_msg:get_type() , name="chatter"},
         Pub = ros_node:create_publisher(Node, ChatterTopic),
 
         erlang:send_after(P,self(),publish),
