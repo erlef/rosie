@@ -5,8 +5,6 @@
 -define(ros_discovery_info_topic_name, "ros_discovery_info").
 -define(ros_discovery_info_topic_type, "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_").
 
--define(msg_string_topic_type, "std_msgs::msg::dds_::String_").
-
 -record(gid,{data = <<0:24/binary>>}).
 
 -record(node_entities_info,{
@@ -20,16 +18,6 @@
 -record(participant_entities_info,{
         gid = #gid{},        
         node_entities_info_seq = []
-}).
-
-% GEOMETRY
--define(msg_twist_topic_type, "geometry_msgs::msg::dds_::Twist_").
-
--record(vector3,{x=0,y=0,z=0}).
-
--record(twist,{
-        linear = #vector3{},        
-        angular = #vector3{}
 }).
 
 -endif.

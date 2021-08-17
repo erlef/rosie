@@ -1,8 +1,9 @@
 -module(ros_node).
+
 -export([start_link/1,get_name/1,create_subscription/4,create_publisher/3,create_client/3,create_service/3]).
+-behaviour(gen_server).
 -export([init/1,handle_call/3,handle_cast/2]).
 
--behaviour(gen_server).
 
 -include_lib("ros/include/rmw_dds_msg.hrl").
 -include_lib("dds/include/dds_types.hrl").
@@ -66,20 +67,17 @@ handle_cast(_,S) -> {noreply,S}.
 % 
 put_topic_prefix(N) ->
         "rt/" ++ N.
-h_create_subscription(MsgModule,TopicName,{Name, Module}) ->
-        SUB = dds_domain_participant:get_default_subscriber(dds),
-        Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName},
-        DR = dds_subscriber:create_datareader(SUB, Topic),
-        dds_data_r:set_listener(DR, {Name, Module});
+% h_create_subscription(MsgModule,TopicName,{Name, Module}) ->
+%         SUB = dds_domain_participant:get_default_subscriber(dds),
+%         Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName},
+%         DR = dds_subscriber:create_datareader(SUB, Topic),
+%         dds_data_r:set_listener(DR, {Name, Module});
 h_create_subscription(MsgModule,TopicName,Callback) ->
-        SUB = dds_domain_participant:get_default_subscriber(dds),
-        Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName},
-        DR = dds_subscriber:create_datareader(SUB, Topic),
-        ProcSpecs = #{  id => ros_msg_listener,
-                        start => {ros_msg_listener, start_link, [MsgModule,Callback]},
+        ProcSpecs = #{  id => ros_subscription,
+                        start => {ros_subscription, start_link, [MsgModule,TopicName,Callback]},
                         type => worker},
         {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
-        dds_data_r:set_listener(DR, {{ros_msg_listener,Callback}, ros_msg_listener}).
+        {ros_subscription,TopicName}.
 
 h_create_publisher(MsgModule, TopicName, #state{name=Name}) ->
         ProcSpecs = #{  id => ros_publisher,
