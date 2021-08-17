@@ -1,5 +1,5 @@
 -module(ros_node).
--export([start_link/1,get_name/1,create_subscription/3,create_publisher/2,create_client/3,create_service/3]).
+-export([start_link/1,get_name/1,create_subscription/4,create_publisher/3,create_client/3,create_service/3]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
@@ -13,12 +13,12 @@ start_link(Name) -> gen_server:start_link(?MODULE, Name, []).
 get_name(Name) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,get_name).
-create_subscription(Name,Topic,Callback) -> 
+create_subscription(Name,MsgModule,TopicName,Callback) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:call(Pid,{create_subscription,Topic,Callback}).
-create_publisher(Name,Topic) -> 
+        gen_server:call(Pid,{create_subscription,MsgModule,TopicName,Callback}).
+create_publisher(Name,MsgModule,TopicName) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:call(Pid,{create_publisher,Topic}).
+        gen_server:call(Pid,{create_publisher,MsgModule,TopicName}).
 create_client(Name, ServiceName, Callback) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{create_client, ServiceName, Callback}).
@@ -42,13 +42,17 @@ init(Name) ->
                         start => {ros_discovery_listener, start_link, []},
                         type => worker},
         {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
-        h_create_subscription(RosDiscoveryTopic, {ros_discovery_listener, ros_discovery_listener}),
+        %subscribe to discovery
+        SUB = dds_domain_participant:get_default_subscriber(dds),
+        DR = dds_subscriber:create_datareader(SUB, RosDiscoveryTopic),
+        dds_data_r:set_listener(DR, {ros_discovery_listener, ros_discovery_listener}),
+
         {ok,#state{name=Name}}.
 
-handle_call({create_subscription,Topic, Callback},_,S) -> 
-        {reply,h_create_subscription(put_topic_prefix(Topic),Callback),S};
-handle_call({create_publisher,Topic},_,S) -> 
-        {reply,h_create_publisher(put_topic_prefix(Topic),S),S};
+handle_call({create_subscription, MsgModule, TopicName, Callback},_,S) -> 
+        {reply, h_create_subscription(MsgModule, put_topic_prefix(TopicName), Callback),S};
+handle_call({create_publisher, MsgModule, TopicName},_,S) -> 
+        {reply,h_create_publisher(MsgModule, put_topic_prefix(TopicName), S),S};
 handle_call({create_client, ServiceName, Callback},_,S) -> 
         {reply,h_create_client( ServiceName, Callback,S),S};
 handle_call({create_service, ServiceName, Callback},_,S) -> 
@@ -60,27 +64,29 @@ handle_cast(_,S) -> {noreply,S}.
 
 % HELPERS
 % 
-put_topic_prefix(#user_topic{name=N}=Topic) ->
-        Topic#user_topic{name= "rt/" ++ N}.
-h_create_subscription(Topic,{Name, Module}) ->
+put_topic_prefix(N) ->
+        "rt/" ++ N.
+h_create_subscription(MsgModule,TopicName,{Name, Module}) ->
         SUB = dds_domain_participant:get_default_subscriber(dds),
+        Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName},
         DR = dds_subscriber:create_datareader(SUB, Topic),
         dds_data_r:set_listener(DR, {Name, Module});
-h_create_subscription(Topic,Callback) ->
+h_create_subscription(MsgModule,TopicName,Callback) ->
         SUB = dds_domain_participant:get_default_subscriber(dds),
+        Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName},
         DR = dds_subscriber:create_datareader(SUB, Topic),
         ProcSpecs = #{  id => ros_msg_listener,
-                        start => {ros_msg_listener, start_link, [Callback]},
+                        start => {ros_msg_listener, start_link, [MsgModule,Callback]},
                         type => worker},
         {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
         dds_data_r:set_listener(DR, {{ros_msg_listener,Callback}, ros_msg_listener}).
 
-h_create_publisher(Topic,#state{name=Name}) ->
+h_create_publisher(MsgModule, TopicName, #state{name=Name}) ->
         ProcSpecs = #{  id => ros_publisher,
-                        start => {ros_publisher, start_link, [{ros_node,Name}, Topic]},
+                        start => {ros_publisher, start_link, [{ros_node,Name}, MsgModule, TopicName]},
                         type => worker},
         {ok, _} = supervisor:start_child(ros_node_workers_sup, ProcSpecs),
-        {ros_publisher,Topic}.
+        {ros_publisher,TopicName}.
 
 h_create_client(Service, Callback,#state{name=Name}) -> 
         ProcSpecs = #{  id => ros_client,

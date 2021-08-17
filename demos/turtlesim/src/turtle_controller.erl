@@ -25,8 +25,7 @@ print_spawn_responce({Msg}) ->
 init(_) -> 
         Node = ros_context:create_node("turtle_controller"),
         
-        ChatterTopic = #user_topic{type_name=?msg_twist_topic_type , name="turtle1/cmd_vel"},
-        Pub = ros_node:create_publisher(Node, ChatterTopic),
+        Pub = ros_node:create_publisher(Node, twist_msg, "turtle1/cmd_vel"),
 
         Client = ros_node:create_client(Node, spawn, fun print_spawn_responce/1),
 
@@ -47,23 +46,27 @@ handle_cast(_,S) -> {noreply,S}.
 
 handle_info(go, #state{chatter_pub=P} = S) -> 
         Sign = +1,
-        Twist = #twist{linear=#vector3{x=2*Sign,y=0,z=0}},
-        ros_publisher:publish(P,Twist),
+        % Twist = #twist{linear=#vector3{x=2*Sign,y=0,z=0}},
+        Msg = {2*Sign,0,0, 0,0,0},
+        ros_publisher:publish(P,Msg),
         {noreply,S};
 handle_info(back, #state{chatter_pub=P} = S) -> 
         Sign = -1,
-        Twist = #twist{linear=#vector3{x=2*Sign,y=0,z=0}},
-        ros_publisher:publish(P,Twist),
+        % Twist = #twist{linear=#vector3{x=2*Sign,y=0,z=0}},
+        Msg = {2*Sign,0,0, 0,0,0},
+        ros_publisher:publish(P,Msg),
         {noreply,S};
 handle_info(right, #state{chatter_pub=P} = S) -> 
         Sign = -1,
-        Twist = #twist{angular=#vector3{x=0,y=0,z=1*Sign}},
-        ros_publisher:publish(P,Twist),
+        % Twist = #twist{angular=#vector3{x=0,y=0,z=1*Sign}},
+        Msg = {0,0,0, 0,0,1*Sign},
+        ros_publisher:publish(P,Msg),
         {noreply,S};
 handle_info(left, #state{chatter_pub=P} = S) -> 
         Sign = +1,
-        Twist = #twist{angular=#vector3{x=0,y=0,z=1*Sign}},
-        ros_publisher:publish(P,Twist),
+        % Twist = #twist{angular=#vector3{x=0,y=0,z=1*Sign}},
+        Msg = {0,0,0, 0,0,1*Sign},
+        ros_publisher:publish(P,Msg),
         {noreply,S};
 handle_info(_,S) -> 
         {noreply,S}.
