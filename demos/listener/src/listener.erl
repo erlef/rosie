@@ -4,7 +4,7 @@
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2]).
 
-% We are gonna use String.msg so we include it's header to use it's record
+% We are going to use String.msg so we include its header to use its record definition.
 -include_lib("std_msgs/src/_rosie/string_msg.hrl").
 
 -record(state, {subscription}).
