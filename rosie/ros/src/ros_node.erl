@@ -5,7 +5,7 @@
 -export([init/1,handle_call/3,handle_cast/2]).
 
 
--include_lib("ros/include/rmw_dds_msg.hrl").
+-include_lib("rmw_dds_common/src/_rosie/participant_entities_info_msg.hrl").
 -include_lib("dds/include/dds_types.hrl").
 
 -record(state,{name}).
@@ -32,8 +32,8 @@ create_service(Name, ServiceName, Callback) ->
 init(Name) ->
         %io:format("~p.erl STARTED!\n",[?MODULE]),
         pg:join({ros_node,Name}, self()),
-        RosDiscoveryTopic = #user_topic{type_name=?ros_discovery_info_topic_type , 
-                                name=?ros_discovery_info_topic_name,
+        RosDiscoveryTopic = #user_topic{type_name=participant_entities_info_msg:get_type(), 
+                                name="ros_discovery_info",
                                 qos_profile = #qos_profile{
                                                 durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
                                                 history= {?KEEP_ALL_HISTORY_QOS,-1}

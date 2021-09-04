@@ -39,6 +39,7 @@ handle_cast(_,S) -> {noreply,S}.
 
 % HELPERS
 h_handle_data(Reader, ChangeKey, #state{msg_module=MsgModule, callback=Callback}) ->
-    Change = dds_data_r:read(Reader, ChangeKey),
-    SerializedPayload = Change#cacheChange.data,
-    Callback(MsgModule:parse(SerializedPayload)).
+        Change = dds_data_r:read(Reader, ChangeKey),
+        SerializedPayload = Change#cacheChange.data,
+        {Parsed,_} = MsgModule:parse(SerializedPayload),
+        Callback(Parsed).
