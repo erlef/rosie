@@ -5,7 +5,6 @@
 -behaviour(gen_server).
 
 -include_lib("dds/include/dds_types.hrl").
--include_lib("ros/include/rmw_dds_msg.hrl").
 
 -record(state,{node, msg_module, topic_name, dds_topic, dds_data_writer}).
 

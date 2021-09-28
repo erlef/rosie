@@ -1,4 +1,4 @@
--module(ros_node_workers_sup).
+-module(minimal_action_client_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -21,13 +21,17 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-        %io:format("~p.erl STARTED!\n",[?MODULE]),
-        SupFlags = #{strategy => one_for_one,
-                intensity => 0,
-                period => 1},
+    SupFlags = #{strategy => one_for_all,
+                 intensity => 0,
+                 period => 1},
+    Client =  #{id => minimal_action_client,
+             start => {minimal_action_client, start_link, []},
+             restart => transient,  
+             shutdown => 5000,
+             type => worker},
 
-        ChildSpecs = [],
+    ChildSpecs = [Client],
 
-        {ok, {SupFlags, ChildSpecs}}.
+    {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

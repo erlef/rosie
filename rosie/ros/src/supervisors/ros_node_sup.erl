@@ -25,18 +25,38 @@ init(NodeName) ->
         SupFlags = #{strategy => one_for_all,
                 intensity => 0,
                 period => 1},
-        WORKERS_SUP = #{id => ros_node_workers_sup,
-                start => {ros_node_workers_sup, start_link, []},
+
+        SUBSCRIPTIONS_SUP = #{id => ros_subscriptions_sup,
+                start => {ros_subscriptions_sup, start_link, []},
                 restart => permanent,  
                 shutdown => 5000,
                 type => supervisor},
+        
+        PUBLICATIONS_SUP = #{id => ros_publishers_sup,
+                start => {ros_publishers_sup, start_link, []},
+                restart => permanent,  
+                shutdown => 5000,
+                type => supervisor},
+        
+        CLIENTS_SUP = #{id => ros_clients_sup,
+                start => {ros_clients_sup, start_link, []},
+                restart => permanent,  
+                shutdown => 5000,
+                type => supervisor},
+        
+        SERVICES_SUP = #{id => ros_services_sup,
+                start => {ros_services_sup, start_link, []},
+                restart => permanent,  
+                shutdown => 5000,
+                type => supervisor},
+
         NODE = #{id => ros_node,
                 start => {ros_node, start_link, [NodeName]},
                 restart => permanent,  
                 shutdown => 5000,
                 type => worker},
 
-        ChildSpecs = [WORKERS_SUP, NODE],
+        ChildSpecs = [SUBSCRIPTIONS_SUP, PUBLICATIONS_SUP, CLIENTS_SUP, SERVICES_SUP, NODE],
 
         {ok, {SupFlags, ChildSpecs}}.
 

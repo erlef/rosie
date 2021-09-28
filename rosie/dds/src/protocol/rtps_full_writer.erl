@@ -17,10 +17,16 @@
 -record(state,{
         participant = #participant{},
         entity = #endPoint{},
-        % default periods are divided by 10 to both speedup data exchange and prevent some annoing thigs as example:
-        % If the heartbeat period is too slow the instance could add a sample before the first heartbeat is produced,
+        % TL;DR -> default periods are too slow and may cause the protocol in a remote reader to ignore the first message in the cache.
+        % 
+        % default periods can be divided to both speedup data exchange and prevent some annoing things as example:
+        % If the heartbeat period is too slow the instance could add a sample before the first heartbeat is produced( with fisrtSN=1,lastSN=0),
         % in some applications (other DDS vendors) this leads to them ignoring the first data sample added in the history cache.
-        % This is particularly problematic if the remote is a ros2 clients that blocks if does not receive the correct sample.
+        % This is particularly problematic if the remote is a ros2 client that blocks if does not receive the correct sample.
+        % 
+        % This happens because the remote reader of cyclone DDS only evaluates data msg if they where requested with an acknack with final_flag,
+        % The only solution for now is to let our writer to send the heartbit to signal an empty cache, 
+        % otherwise the remote reader implementation will ignore the first sample, and will straight up request the second.
         datawrite_period= ?DEFAULT_WRITE_PERIOD div 10, % default at 1000
         heatbeat_period= ?DEFAULT_HEARTBEAT_PERIOD div 10, % default at 1000
         nackResponseDelay= ?DEFAULT_NACK_RESPONCE_DELAY div 10, % default at 200
@@ -75,8 +81,8 @@ init({Participant,#endPoint{guid=GUID}=WriterConfig}) ->
                         history_cache = {cache_of, GUID}},
         rtps_history_cache:set_listener({cache_of, GUID}, {GUID,?MODULE}),
         
-        erlang:send_after(1,self(),heartbeat_loop),
-        erlang:send_after(1,self(),write_loop),
+        erlang:send_after(10,self(),heartbeat_loop),
+        erlang:send_after(10,self(),write_loop),
         {ok,State}.
 
 handle_call({new_change,Data}, _, State) ->  
