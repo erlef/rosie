@@ -1,5 +1,5 @@
 {application, example_interfaces,
- [{description, "Interfaces for services, messages and actions used by the demos"},
+ [{description, "example_interfaces"},
   {vsn, "0.1.0"},
   {registered, []},
   {applications,

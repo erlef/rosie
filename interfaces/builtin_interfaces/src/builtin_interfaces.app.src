@@ -1,5 +1,5 @@
-{application, std_msgs,
- [{description, "std_msgs"},
+{application, builtin_interfaces,
+ [{description, "builtin_interfaces"},
   {vsn, "0.1.0"},
   {registered, []},
   {applications,

@@ -1,5 +1,5 @@
-{application, std_msgs,
- [{description, "std_msgs"},
+{application, unique_identifier_msgs,
+ [{description, "unique_identifier_msgs"},
   {vsn, "0.1.0"},
   {registered, []},
   {applications,
