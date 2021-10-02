@@ -23,12 +23,12 @@ create_subscription(Name,MsgModule,TopicName,Callback) ->
 create_publisher(Name,MsgModule,TopicName) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{create_publisher,MsgModule,TopicName}).
-create_client(Name, ServiceName, CallbackHandler) -> 
+create_client(Name, Service, CallbackHandler) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:call(Pid,{create_client, ServiceName, CallbackHandler}).
-create_service(Name, ServiceName, Callback) -> 
+        gen_server:call(Pid,{create_client, Service, CallbackHandler}).
+create_service(Name, Service, Callback) -> 
         [Pid|_] = pg:get_members(Name),
-        gen_server:call(Pid,{create_service, ServiceName, Callback}).
+        gen_server:call(Pid,{create_service, Service, Callback}).
 %callbacks
 % 
 init(Name) ->
@@ -57,10 +57,11 @@ handle_call({create_subscription, MsgModule, TopicName, CallbackHandler},_,S) ->
         {reply, h_create_subscription(MsgModule, put_topic_prefix(TopicName), CallbackHandler),S};
 handle_call({create_publisher, MsgModule, TopicName},_,S) -> 
         {reply,h_create_publisher(MsgModule, put_topic_prefix(TopicName), S),S};
-handle_call({create_client, ServiceName, CallbackHandler},_,S) -> 
-        {reply,h_create_client( ServiceName, CallbackHandler,S),S};
-handle_call({create_service, ServiceName, CallbackHandler},_,S) -> 
-        {reply,h_create_service( ServiceName, CallbackHandler,S),S};
+
+handle_call({create_client, Service, CallbackHandler},_,S) -> 
+        {reply,h_create_client( Service, CallbackHandler,S),S};
+handle_call({create_service, Service, CallbackHandler},_,S) -> 
+        {reply,h_create_service( Service, CallbackHandler,S),S};
 
 handle_call(get_name,_,#state{name=N}=S) -> {reply,N,S};
 handle_call(_,_,S) -> {reply,ok,S}.
@@ -84,10 +85,16 @@ h_create_publisher(MsgModule, TopicName, #state{name=Name}) ->
         {ok, _} = supervisor:start_child(ros_publishers_sup, [{ros_node,Name}, MsgModule, TopicName]),
         {ros_publisher,TopicName}.
 
+h_create_client({Service,Prefix}, CallbackHandler,#state{name=Name}) ->
+        {ok, _} = supervisor:start_child(ros_clients_sup, [{ros_node,Name}, {Service,Prefix}, CallbackHandler]),
+        {ros_client,Service};
 h_create_client(Service, CallbackHandler,#state{name=Name}) ->
         {ok, _} = supervisor:start_child(ros_clients_sup, [{ros_node,Name}, Service, CallbackHandler]),
         {ros_client,Service}.
 
+h_create_service({Service,Prefix}, CallbackHandler,#state{name=Name}) -> 
+        {ok, _} = supervisor:start_child(ros_services_sup, [{ros_node,Name}, {Service,Prefix}, CallbackHandler]),
+        {ros_service,Service};
 h_create_service(Service, CallbackHandler,#state{name=Name}) -> 
         {ok, _} = supervisor:start_child(ros_services_sup, [{ros_node,Name}, Service, CallbackHandler]),
         {ros_service,Service}.

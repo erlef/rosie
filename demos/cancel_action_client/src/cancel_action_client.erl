@@ -1,10 +1,10 @@
--module(minimal_action_client).
+-module(cancel_action_client).
 
 -export([start_link/0]).
 
 
 -behaviour(gen_action_client_listener).
--export([on_send_goal_reply/2, on_get_result_reply/2, on_feedback_message/2]).
+-export([on_send_goal_reply/2, on_get_result_reply/2, on_feedback_message/2, on_cancel_goal_reply/2]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -29,6 +29,9 @@ on_send_goal_reply(Pid, Msg) ->
 on_get_result_reply(Pid, Msg) ->
         gen_server:cast(Pid, {on_get_result_reply,Msg}).
 
+on_cancel_goal_reply(Pid,Msg) ->
+        gen_server:cast(Pid, {on_cancel_goal_reply,Msg}).
+
 on_feedback_message(Pid, Msg) ->
         gen_server:cast(Pid, {on_feedback_message,Msg}).
 
@@ -42,21 +45,26 @@ init(_) ->
 
         ros_action_client:wait_for_server(ActionClient, 1000),
 
+
         {ok,#state{ros_node=Node, action_client = ActionClient}}.
 
 handle_call(_,_,S) -> {reply,ok,S}.
 
 
-handle_cast({on_send_goal_reply, #fibonacci_send_goal_rp{responce_code=Responce,timestamp=T}}, 
-                #state{action_client = AC,goal_info =  #goal_info{goal_id=GOAL_ID}} = S) ->   
+handle_cast({on_send_goal_reply,#fibonacci_send_goal_rp{responce_code=Responce,timestamp=T}}, 
+                #state{action_client = AC, goal_info = #goal_info{goal_id=GOAL_ID}} = S) ->   
         case Responce of
                 1 ->  io:format("Goal accepted :)\nRequesting result...\n"), 
-                      ros_action_client:get_result(AC, #fibonacci_get_result_rq{goal_id = GOAL_ID});
+                      ros_action_client:get_result(AC, #fibonacci_get_result_rq{goal_id = GOAL_ID}),
+                      erlang:send_after(3000, self(), send_cancel_goal);
                 _ -> io:format("Goal rejected with code ~p\n",[Responce])
         end,
-        {noreply,S#state{goal_info=#goal_info{goal_id= GOAL_ID, stamp = T}}};
+        {noreply,S#state{goal_info=#goal_info{goal_id=GOAL_ID, stamp = T}}};
 handle_cast({on_get_result_reply,#fibonacci_get_result_rp{goal_status=Status,sequence=Seq}}, S) -> 
         io:format("Result received: ~p\n",[Seq]),
+        {noreply,S};
+handle_cast({on_cancel_goal_reply,#cancel_goal_rp{return_code=Code,goals_canceling=Seq}}, S) -> 
+        io:format("Cancel operation returned: ~p \n Goals that are being cancelled: ~p\n",[Code,Seq]),
         {noreply,S};
 handle_cast({on_feedback_message,#fibonacci_feedback_message{goal_id=ID,sequence=Seq}}, S) -> 
         io:format("Received feedback: ~p\n",[Seq]),
@@ -68,10 +76,15 @@ handle_info(ros_action_server_ready, #state{action_client=C} = S) ->
         io:format("Action Server detected...\n"),
         Goal = fibonacci_action:goal(),
         ros_action_client:send_goal(C, Goal#fibonacci_send_goal_rq{order=10}),
-        {noreply,S#state{goal_info= #goal_info{goal_id= Goal#fibonacci_send_goal_rq.goal_id}}};
+        {noreply,S#state{goal_info= #goal_info{goal_id =  Goal#fibonacci_send_goal_rq.goal_id}}};
 handle_info(ros_timeout, #state{action_client=C} = S) -> 
         io:format("Action Server not found... trying again...\n"),
         ros_action_client:wait_for_server(C,1000),
+        {noreply,S};
+handle_info(send_cancel_goal, #state{action_client=C, goal_info= #goal_info{goal_id=UUID}=G} = S) -> 
+        io:format("Asking server to cancel goal: ~p\n",[UUID#u_u_i_d.uuid]),
+        % We send only the goal_id, sending the time will have the server cancel also all previous goals
+        ros_action_client:cancel_goal(C, #cancel_goal_rq{ goal_info = #goal_info{goal_id=UUID}}),
         {noreply,S}.
 
 

@@ -1,6 +1,6 @@
 -module(ros_action_client).
 
--export([start_link/3,wait_for_server/2,send_goal/2,get_result/2]).
+-export([start_link/3,wait_for_server/2,send_goal/2,get_result/2,cancel_goal/2]).
 
 -behaviour(gen_client_listener).
 -export([on_service_reply/2]).
@@ -10,9 +10,7 @@
 -behaviour(gen_server).
 -export([init/1,handle_call/3,handle_cast/2,handle_info/2]).
 
-
--include_lib("dds/include/rtps_structure.hrl").
--include_lib("dds/include/dds_types.hrl").
+-include_lib("action_msgs/src/_rosie/cancel_goal_srv.hrl").
 
 -record(state,{node,
         % module holding interface infos
@@ -36,12 +34,18 @@ start_link(Node, Action, {CallbackModule,Pid}) ->
 wait_for_server(Name,Timeout) ->
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{wait_for_server,Timeout}).
+
 send_goal(Name, GoalRequest) ->
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{send_goal, GoalRequest}).
+
 get_result(Name,ResultRequest) ->
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{get_result,ResultRequest}).
+
+cancel_goal(Name, CancelGoalRequest) ->
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid,{cancel_goal, CancelGoalRequest}).
 
 
 on_service_reply(Name, Msg) ->
@@ -61,21 +65,20 @@ init(#state{node = Node, action_interface = Action,
         %customized by the user
         RequestGoalClient = ros_node:create_client(Node, Action:get_goal_srv_module(), {?MODULE,Name}),        
         GetResultClient = ros_node:create_client(Node, Action:get_result_srv_module(), {?MODULE,Name}),        
-        FeedbackSub = ros_node:create_subscription(Node, Action:get_feedback_msg_module(), Action:get_feedback_topic_name(), {?MODULE,Name}),
+        FeedbackSub = ros_node:create_subscription(Node, Action:get_feedback_msg_module(), Action:get_action_name()++"/_action/feedback", {?MODULE,Name}),
         
-        % equal to any action
-        StatusSub = ros_node:create_subscription(Node, goal_status_array_msg,  Action:get_status_topic_name(), {?MODULE,Name}),
-        %% TODO cancel srv has generic type but name is specific!!! must add "action_name/_action/" to the srv name
-        %CancelGoalClient = ros_node:create_client(Node, cancel_goal_srv, fun test_cancel/1),
+        %standard but names must be specialized for this action instance
+        CancelGoalClient = ros_node:create_client(Node, {cancel_goal_srv, Action:get_action_name()++"/_action/"}, {?MODULE,Name}),
+        StatusSub = ros_node:create_subscription(Node, goal_status_array_msg,  Action:get_action_name()++"/_action/status", {?MODULE,Name}),
 
         {ok,S#state{
         request_goal_client = RequestGoalClient,        
-        %cancel_goal_client,
+        cancel_goal_client = CancelGoalClient,
         get_result_client = GetResultClient,
         % ros subscription to remote topics for this action
         feed_subscription = FeedbackSub,        
         status_subscription =StatusSub
-}}.
+        }}.
 
 handle_call({wait_for_server,Timeout}, {Caller,_}, S) -> 
         self() ! {wait_for_server_loop, Caller, Timeout, now()},
@@ -86,6 +89,9 @@ handle_call({send_goal,GoalRequest},_,S) ->
 handle_call({get_result,ResultRequest},_,S) ->
         h_get_result(ResultRequest,S),
         {reply,ok,S};
+handle_call({cancel_goal,CancelGoalRequest},_,S) ->
+        h_cancel_goal(CancelGoalRequest,S),
+        {reply,ok,S};
 handle_call(_,_,S) -> {reply,ok,S}.
 
         
@@ -93,6 +99,7 @@ handle_cast({on_service_reply,Msg},#state{action_interface= AI, callback_handler
         case AI:identify_msg(Msg) of
                 send_goal_rp -> M:on_send_goal_reply(Pid,Msg);
                 get_result_rp -> M:on_get_result_reply(Pid,Msg);
+                cancel_goal_rp -> M:on_cancel_goal_reply(Pid,Msg);
                 _ -> io:format("[ROS_ACTION]: BAD MSG RECEIVED FROM SERVICE\n")
         end,
         {noreply,S};
@@ -127,6 +134,9 @@ h_send_goal(GoalRequest,#state{ action_interface = ActionModule, request_goal_cl
 
 h_get_result(ResultRequest,#state{ get_result_client = GetResultClient}) -> 
         ros_client:cast(GetResultClient, ResultRequest).
+
+h_cancel_goal(CancelGoalRequest,#state{ cancel_goal_client = CancelGoalClient}) ->
+        ros_client:cast(CancelGoalClient, CancelGoalRequest).
 
 
 h_handle_status_update(GoalStatusArrayMsg, S) -> 

@@ -11,13 +11,18 @@
 -include_lib("dds/include/dds_types.hrl").
 
 -record(state,{node, 
-        service_handle, 
-        user_callback, 
+        service_interface,
+        name_prefx = "",
+        user_process, 
         dds_data_writer, 
         dds_data_reader }).
 
-start_link(Node, Service, Callback) -> 
-        gen_server:start_link(?MODULE, #state{node=Node,service_handle=Service,user_callback = Callback}, []).
+        
+start_link(Node, {Service, NamePrefix},{Module,Pid}) -> 
+        gen_server:start_link(?MODULE, #state{node=Node, service_interface=Service, name_prefx=NamePrefix, user_process = {Module,Pid}}, []);
+start_link(Node, Service, {Module,Pid}) -> 
+        gen_server:start_link(?MODULE, #state{node=Node, service_interface=Service, user_process = {Module,Pid}}, []).
+%This second start-link is for internal use by the action modules
 send_response(Name,Response) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:cast(Pid,{send_response, Response}).
@@ -28,11 +33,11 @@ on_data_available(Name, {Reader, ChangeKey}) ->
 
 %callbacks
 % 
-init(#state{service_handle = Service}=S) ->
+init(#state{service_interface = Service, name_prefx=NP}=S) ->
         pg:join({?MODULE,Service}, self()),
 
         % A Service listens to the request topic
-        SpawnRequest_name = "rq/" ++ Service:get_name() ++ "Request",
+        SpawnRequest_name = "rq/" ++ NP ++ Service:get_name() ++ "Request",
         SpawnRequest_type = Service:get_type() ++ "Request_",
         SpawnRequest = #user_topic{name = SpawnRequest_name,type_name = SpawnRequest_type},
 
@@ -42,7 +47,7 @@ init(#state{service_handle = Service}=S) ->
 
         
         % And publishes to the reply topic
-        SpawnReply_name = "rr/" ++ Service:get_name() ++ "Reply",
+        SpawnReply_name = "rr/" ++ NP ++ Service:get_name() ++ "Reply",
         SpawnReply_type = Service:get_type() ++ "Response_",
         SpawnReply = #user_topic{name = SpawnReply_name,type_name = SpawnReply_type},
 
@@ -53,16 +58,16 @@ init(#state{service_handle = Service}=S) ->
 
 
 handle_call(_,_,S) -> {reply,ok,S}.
-handle_cast({send_response, {Client_ID, Response}}, #state{dds_data_writer = DW,service_handle = Service} = S) -> 
+handle_cast({send_response, {Client_ID, Response}}, #state{dds_data_writer = DW,service_interface = Service} = S) -> 
         Serialized = Service:serialize_reply(Client_ID, Response),
         dds_data_w:write(DW, Serialized),
         {noreply,S};
 handle_cast({on_data_available, { Reader, ChangeKey}},
-                #state{user_callback = UserCall, service_handle = Service} = S) -> 
+                #state{user_process = {M,Pid}, service_interface = Service} = S) -> 
         Change = dds_data_r:read(Reader, ChangeKey),
         SerializedPayload = Change#cacheChange.data,
         {Client_ID, Request} = Service:parse_request(SerializedPayload),
-        Response = UserCall(Request),
+        Response = M:on_client_request(Pid,Request),
         ros_service:send_response({?MODULE,Service}, {Client_ID, Response}),
         {noreply,S};
 handle_cast(_,S) -> {noreply,S}.

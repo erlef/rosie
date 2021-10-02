@@ -11,14 +11,18 @@
 
 -record(state,{node, 
         service_handle, 
+        name_prefix = "",
         user_process, 
         client_id,
         dds_data_writer, 
         dds_data_reader,
         waiting_caller = none }).
 
+start_link(Node, {Service, NamePrefix}, CallbackHandler) -> 
+        gen_server:start_link(?MODULE, #state{node=Node,service_handle=Service, name_prefix = NamePrefix, user_process = CallbackHandler}, []);
 start_link(Node, Service, CallbackHandler) -> 
         gen_server:start_link(?MODULE, #state{node=Node,service_handle=Service, user_process = CallbackHandler}, []).
+
 wait_for_service(Name,Timeout) ->
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{wait_for_service,Timeout}).
@@ -38,10 +42,10 @@ on_data_available(Name, {Reader, ChangeKey}) ->
 
 %callbacks
 % 
-init(#state{service_handle = Service}=S) ->
+init(#state{service_handle = Service, name_prefix = NP}=S) ->
         pg:join({?MODULE,Service}, self()),
         % A client publishes to the request topic
-        SpawnRequest_name = "rq/" ++ Service:get_name() ++ "Request",
+        SpawnRequest_name = "rq/" ++ NP ++ Service:get_name() ++ "Request",
         SpawnRequest_type = Service:get_type() ++ "Request_",
         SpawnRequest = #user_topic{name = SpawnRequest_name,type_name = SpawnRequest_type},
 
@@ -49,7 +53,7 @@ init(#state{service_handle = Service}=S) ->
         DW = dds_publisher:create_datawriter(Pub, SpawnRequest),
 
         % Then it also listens to the reply topic
-        SpawnReply_name = "rr/" ++ Service:get_name() ++ "Reply",
+        SpawnReply_name = "rr/" ++ NP ++ Service:get_name() ++ "Reply",
         SpawnReply_type = Service:get_type() ++ "Response_",
         SpawnReply = #user_topic{name = SpawnReply_name,type_name = SpawnReply_type},
 
