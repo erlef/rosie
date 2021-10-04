@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0,create_datareader/2,lookup_datareader/2,on_data_available/2,dispose_data_readers/1]). %set_subscription_publisher/2,
+-export([start_link/0,get_all_data_readers/1,create_datareader/2,lookup_datareader/2,on_data_available/2,dispose_data_readers/1]). %set_subscription_publisher/2,
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 -include_lib("dds/include/dds_types.hrl").
@@ -26,6 +26,9 @@ create_datareader(Name,Topic) ->
 lookup_datareader(Name,Topic) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{lookup_datareader, Topic}).
+get_all_data_readers(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid, get_all_data_readers).
 dispose_data_readers(Name) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,dispose_data_readers).
@@ -83,6 +86,8 @@ handle_call({lookup_datareader, builtin_sub_detector}, _, State) ->
 handle_call({lookup_datareader, Topic}, _, #state{data_readers=DR}=State) -> 
         [R|_] = [ Name || {_,T,Name} <- DR, T==Topic ],
         {reply, R, State};
+handle_call(get_all_data_readers, _, State) -> 
+        {reply,State#state.data_readers,State};
 handle_call(dispose_data_readers, _, #state{rtps_participant_info= P_info, data_readers=DR}=State) -> 
         Sub_announcer = dds_publisher:lookup_datawriter(dds_default_publisher, builtin_sub_announcer),
         [ dds_data_w:write(Sub_announcer,  produce_sedp_endpoint_leaving(P_info, ID)) || {ID,_,_} <- DR],

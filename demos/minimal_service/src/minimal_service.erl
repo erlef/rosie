@@ -17,7 +17,7 @@
 start_link() -> 
         gen_server:start_link(?MODULE, #state{}, []).
 
-on_client_request(Pid,R) -> 
+on_client_request(Pid,{_,R}) -> 
         gen_server:call(Pid,{handle_request,R}).
 
 init(S) -> 

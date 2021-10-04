@@ -100,7 +100,7 @@ handle_cast({on_service_reply,Msg},#state{action_interface= AI, callback_handler
                 send_goal_rp -> M:on_send_goal_reply(Pid,Msg);
                 get_result_rp -> M:on_get_result_reply(Pid,Msg);
                 cancel_goal_rp -> M:on_cancel_goal_reply(Pid,Msg);
-                _ -> io:format("[ROS_ACTION]: BAD MSG RECEIVED FROM SERVICE\n")
+                _ -> io:format("[ROS_ACTION_CLIENT]: BAD MSG RECEIVED FROM SERVICE\n")
         end,
         {noreply,S};
 handle_cast({on_topic_msg,Msg},#state{action_interface= AI, callback_handler={M,Pid}}=S) ->

@@ -1,0 +1,15 @@
+{application, minimal_action_server,
+ [{description, "Example action server"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {minimal_action_server_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

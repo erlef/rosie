@@ -1,4 +1,4 @@
--module(ros_action_clients_sup).
+-module(ros_action_servers_sup).
 
 -behaviour(supervisor).
 -export([start_link/0]).
@@ -16,8 +16,8 @@ init([]) ->
                 intensity => 0,
                 period => 1},
 
-    Actionclient = [#{id => ros_action_client,
-            start => {ros_action_client,start_link,[]},
+    Actionclient = [#{id => ros_action_server,
+            start => {ros_action_server,start_link,[]},
             restart => permanent,  
             shutdown => 5000,
             type => worker}],

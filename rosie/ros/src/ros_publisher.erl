@@ -1,24 +1,27 @@
 -module(ros_publisher).
--export([start_link/3,publish/2]).
+-export([start_link/3,start_link/2,publish/2]).
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -behaviour(gen_server).
 
 -include_lib("dds/include/dds_types.hrl").
 
--record(state,{node, msg_module, topic_name, dds_topic, dds_data_writer}).
+-record(state,{msg_module, topic_name, qos_profile = #qos_profile{}, dds_topic, dds_data_writer}).
 
-start_link(Node,MsgModule,TopicName) -> 
-        gen_server:start_link(?MODULE, #state{node=Node,msg_module=MsgModule,topic_name=TopicName}, []).
+
+start_link(MsgModule,QoSProfile,TopicName) -> 
+        gen_server:start_link(?MODULE, #state{msg_module=MsgModule,qos_profile = QoSProfile, topic_name=TopicName}, []).
+start_link(MsgModule,TopicName) -> 
+        gen_server:start_link(?MODULE, #state{msg_module=MsgModule,topic_name=TopicName}, []).
 publish(Name,Msg) ->
         [Pid| _ ] = pg:get_members(Name),
         gen_server:cast(Pid,{publish,Msg}).
 %callbacks
 % 
-init(#state{msg_module=MsgModule,topic_name=TopicName}=S) ->
+init(#state{msg_module=MsgModule,topic_name=TopicName, qos_profile = QoSProfile}=S) ->
         pg:join({?MODULE,TopicName}, self()),        
         Pub = dds_domain_participant:get_default_publisher(dds), 
-        DDS_Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName},
+        DDS_Topic = #user_topic{type_name= MsgModule:get_type() , name=TopicName, qos_profile = QoSProfile},
         DW = dds_publisher:create_datawriter(Pub, DDS_Topic),
         {ok,S#state{dds_topic= DDS_Topic,dds_data_writer= DW}}.
 

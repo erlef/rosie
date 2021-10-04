@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, create_datawriter/2,lookup_datawriter/2,on_data_available/2,dispose_data_writers/1,wait_for_acknoledgements/1]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
+-export([start_link/0, get_all_data_writers/1, create_datawriter/2,lookup_datawriter/2,on_data_available/2,dispose_data_writers/1,wait_for_acknoledgements/1]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
 -export([init/1, handle_call/3, handle_cast/2,handle_info/2]).
 
 
@@ -27,6 +27,9 @@ create_datawriter(Name,Topic) ->
 lookup_datawriter(Name,Topic) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,{lookup_datawriter,Topic}).
+get_all_data_writers(Name) -> 
+        [Pid|_] = pg:get_members(Name),
+        gen_server:call(Pid, get_all_data_writers).
 dispose_data_writers(Name) -> 
         [Pid|_] = pg:get_members(Name),
         gen_server:call(Pid,dispose_data_writers).
@@ -79,8 +82,12 @@ handle_call({create_datawriter,Topic}, _,
         {reply, {data_w_of,GUID}, 
                 S#state{data_writers = Writers ++ [{EntityID,Topic,{data_w_of,GUID}}], incremental_key = K+1 }};
 
-handle_call({lookup_datawriter,builtin_sub_announcer}, _, State) -> {reply,State#state.builtin_sub_announcer,State};
-handle_call({lookup_datawriter,builtin_pub_announcer}, _, State) -> {reply,State#state.builtin_pub_announcer,State};
+handle_call({lookup_datawriter,builtin_sub_announcer}, _, State) -> 
+        {reply,State#state.builtin_sub_announcer,State};
+handle_call({lookup_datawriter,builtin_pub_announcer}, _, State) -> 
+        {reply,State#state.builtin_pub_announcer,State};
+handle_call(get_all_data_writers, _, State) -> 
+        {reply,State#state.data_writers,State};
 handle_call({lookup_datawriter,Topic}, _, #state{data_writers=DW} = S) -> 
         [W|_] = [ Name || {_,T,Name} <- DW, T==Topic ],
         {reply, W, S};

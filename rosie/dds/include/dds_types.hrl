@@ -14,13 +14,15 @@
 -define(TRANSIENT_DURABILITY_QOS,2).
 -define(PERSISTENT_DURABILITY_QOS,3).
 
+
+-define(KEEP_LAST_HISTORY_QOS,0).
 -define(KEEP_ALL_HISTORY_QOS,1).
 
 
 -record(qos_profile,{
         durability=?VOLATILE_DURABILITY_QOS,
         reliability=?RELIABLE_RELIABILITY_QOS,
-        history = {0,1}}).
+        history = {?KEEP_LAST_HISTORY_QOS,1}}).
 
 -record(user_topic,{type_name,
                     name, qos_profile = #qos_profile{}}).

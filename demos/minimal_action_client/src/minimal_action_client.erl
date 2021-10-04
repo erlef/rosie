@@ -10,7 +10,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 
-% We are going to use Fibonacci.action, so we include its header to use record definitions of all its components.
+% We are going to use Fibonacci.action, so we include its header to use record definitions of all of its components.
 -include_lib("example_interfaces/src/_rosie/fibonacci_action.hrl").
 
 -record(state,{ ros_node,

@@ -76,7 +76,7 @@ handle_call({send_request_and_wait, Request}, From, #state{dds_data_writer = DW,
 handle_call(_,_,S) -> {reply,ok,S}.
 
 handle_cast({send_request_async, Request}, #state{dds_data_writer = DW,service_handle = Service, client_id=ID} = S) -> 
-        Serialized = Service:serialize_request(ID,Request),
+        Serialized = Service:serialize_request(ID, 1,Request),
         dds_data_w:write(DW, Serialized),
         {noreply,S};
 handle_cast({on_data_available, { Reader, ChangeKey}},
@@ -84,7 +84,7 @@ handle_cast({on_data_available, { Reader, ChangeKey}},
         Change = dds_data_r:read(Reader, ChangeKey),
         SerializedPayload = Change#cacheChange.data,
         case Service:parse_reply(SerializedPayload) of 
-                {Client_ID, Reply} -> gen_server:reply(Caller, Reply), {noreply,S#state{waiting_caller = none}};
+                {Client_ID, RequestNumber, Reply} -> gen_server:reply(Caller, Reply), {noreply,S#state{waiting_caller = none}};
                 _ -> {noreply,S}
         end;
 handle_cast({on_data_available, { Reader, ChangeKey}},
@@ -93,7 +93,7 @@ handle_cast({on_data_available, { Reader, ChangeKey}},
 
         SerializedPayload = Change#cacheChange.data,
         case Service:parse_reply(SerializedPayload) of 
-                {Client_ID, Reply} -> M:on_service_reply(Pid,Reply), {noreply,S};
+                {Client_ID, RequestNumber, Reply} -> M:on_service_reply(Pid,Reply), {noreply,S};
                 _ -> {noreply,S}
         end;
 handle_cast(_,S) -> {noreply,S}.
