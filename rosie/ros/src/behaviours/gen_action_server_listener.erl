@@ -6,3 +6,5 @@
 -callback on_execute_goal(Listener :: pid(), Goal :: term()) -> term().
 
 -callback on_cancel_goal_request(Listener :: pid(), Goal :: term()) -> term().
+
+-callback on_cancel_goal(Listener :: pid(), Goal :: term()) -> term().

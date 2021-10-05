@@ -8,3 +8,5 @@
 -callback on_cancel_goal_reply(Listener :: pid(), Msg :: term()) -> term().
 
 -callback on_feedback_message(Listener :: pid(), Msg :: term()) -> term().
+
+-optional_callbacks([on_cancel_goal_reply/2]).

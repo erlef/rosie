@@ -29,7 +29,7 @@ init([]) ->
                  restart => permanent,  
                  shutdown => 5000,
                  type => worker},
-    RTPS =  #{id => rtps_part,
+    RTPS_Participant =  #{id => rtps_part,
              start => {rtps_participant,start_link,[]},
              restart => permanent,  
              shutdown => 5000,
@@ -54,7 +54,7 @@ init([]) ->
              restart => permanent,  
              shutdown => 5000,
              type => worker},
-    ChildSpecs = [PG,RTPS,WIRE,SUB_SUP,PUB_SUP,DomainParticipant],
+    ChildSpecs = [PG,RTPS_Participant,SUB_SUP,PUB_SUP,WIRE,DomainParticipant],
 
     {ok, {SupFlags, ChildSpecs}}.
 

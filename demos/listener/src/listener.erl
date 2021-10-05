@@ -18,9 +18,6 @@ start_link() ->
 on_topic_msg(Pid, Msg) -> 
         gen_server:cast(Pid, {on_topic_msg, Msg}).
 
-receive_chat(#string{message=Msg}) -> 
-        io:format("ROSIE: [listener]: I heard: ~s\n",[Msg]).
-
 init(_) -> 
         Node = ros_context:create_node("listener"),       
         Sub = ros_node:create_subscription(Node, string_msg, "chatter", {?MODULE, self()}),

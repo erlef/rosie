@@ -55,10 +55,10 @@ handle_cast({on_send_goal_reply, #fibonacci_send_goal_rp{responce_code=Responce,
                 _ -> io:format("Goal rejected with code ~p\n",[Responce])
         end,
         {noreply,S#state{goal_info=#goal_info{goal_id= GOAL_ID, stamp = T}}};
-handle_cast({on_get_result_reply,#fibonacci_get_result_rp{goal_status=Status,sequence=Seq}}, S) -> 
+handle_cast({on_get_result_reply,#fibonacci_get_result_rp{sequence=Seq}}, S) -> 
         io:format("Result received: ~p\n",[Seq]),
         {noreply,S};
-handle_cast({on_feedback_message,#fibonacci_feedback_message{goal_id=ID,sequence=Seq}}, S) -> 
+handle_cast({on_feedback_message,#fibonacci_feedback_message{sequence=Seq}}, S) -> 
         io:format("Received feedback: ~p\n",[Seq]),
         {noreply,S};
 handle_cast(_,S) -> {noreply,S}.
