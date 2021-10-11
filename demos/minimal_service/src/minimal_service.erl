@@ -29,7 +29,7 @@ init(S) ->
 
 handle_call({handle_request,#add_two_ints_rq{a=A,b=B}},_,S) -> 
         io:format("[ROSIE] Received request for: ~p ~p\n",[A,B]),
-        {reply,#add_two_ints_rp{r = A + B },S};
+        {reply,#add_two_ints_rp{sum = A + B },S};
 handle_call(_,_,S) -> {reply,ok,S}.
 
 handle_cast(_,S) -> {noreply,S}.

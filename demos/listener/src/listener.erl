@@ -25,7 +25,7 @@ init(_) ->
 
 handle_call(_,_,S) -> {reply,ok,S}.
 
-handle_cast({on_topic_msg, #string{message=Msg}},S) -> 
+handle_cast({on_topic_msg, #string{data=Msg}},S) -> 
         io:format("ROSIE: [listener]: I heard: ~s\n",[Msg]),
         {noreply,S};
 handle_cast(_,S) -> {noreply,S}.

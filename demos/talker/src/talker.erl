@@ -29,7 +29,7 @@ handle_cast(_,S) -> {noreply,S}.
 handle_info(publish,#state{ros_node=Node,chatter_pub=P, period=Period, num=N} = S) -> 
         MSG = "I'm Rosie: " ++ integer_to_list(N),
         io:format("ROSIE: [~s]: Publishing: ~s\n",[ros_node:get_name(Node), MSG]),
-        ros_publisher:publish(P,#string{message = MSG}), 
+        ros_publisher:publish(P,#string{data = MSG}), 
         erlang:send_after(Period,self(),publish),
         {noreply,S#state{num=N+1}};
 handle_info(_,S) -> {noreply,S}.

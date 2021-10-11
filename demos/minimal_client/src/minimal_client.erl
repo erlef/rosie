@@ -39,7 +39,7 @@ init(_) ->
 
 handle_call({ask,{A,B}}, _, #state{add_client=C} = S) -> 
         case ros_client:service_is_ready(C) of
-                true -> #add_two_ints_rp{r=R} = ros_client:call(C, #add_two_ints_rq{a = A, b = B}), 
+                true -> #add_two_ints_rp{sum=R} = ros_client:call(C, #add_two_ints_rq{a = A, b = B}), 
                         {reply, R, S};
                 false -> {reply, service_unavailable, S}
         end;
@@ -48,7 +48,7 @@ handle_call(_,_,S) -> {reply,ok,S}.
 handle_cast({ask_async,{A,B}}, #state{add_client=C} = S) -> 
         ros_client:cast(C, #add_two_ints_rq{a = A, b = B}),
         {noreply,S};
-handle_cast({on_service_reply,#add_two_ints_rp{r=R}}, S) -> 
+handle_cast({on_service_reply,#add_two_ints_rp{sum=R}}, S) -> 
         io:format("Result: ~p\n",[R]),
         {noreply,S};
 handle_cast(_,S) -> {noreply,S}.
