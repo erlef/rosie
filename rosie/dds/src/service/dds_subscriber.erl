@@ -66,8 +66,8 @@ init([]) ->
         GUID_MR = #guId{ prefix =  P_info#participant.guid#guId.prefix, 
                         entityId = ?ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_READER},        
         P2P_Reader_Config = #endPoint{guid = GUID_MR},
-        {ok, _ } = supervisor:start_child(dds_datawriters_pool_sup, 
-                        [{data_writer, builtin_msg_reader, P_info, P2P_Reader_Config}]),
+        {ok, _ } = supervisor:start_child(dds_datareaders_pool_sup, 
+                        [{data_reader, builtin_msg_reader, P_info, P2P_Reader_Config}]),
         
         {ok,#state{ rtps_participant_info=P_info, 
                         builtin_pub_detector = {data_r_of,GUID_p}, 
