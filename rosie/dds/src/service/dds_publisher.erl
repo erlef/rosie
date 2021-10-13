@@ -14,6 +14,7 @@
         rtps_participant_info=#participant{},
         builtin_pub_announcer,
         builtin_sub_announcer,
+        builtin_msg_writer,
         data_writers = [],
         incremental_key=1}).
 
@@ -63,9 +64,17 @@ init([]) ->
         SubDetector = dds_subscriber:lookup_datareader(dds_default_subscriber, builtin_sub_detector),
         dds_data_r:set_listener(SubDetector, {dds_default_publisher, ?MODULE}),
         
+        % The builtin message writer for general purpose comunications between DDS participants
+        GUID_MW = #guId{ prefix =  P_info#participant.guid#guId.prefix, 
+                        entityId = ?ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_WRITER},        
+        P2P_Writer_Config = #endPoint{guid = GUID_MW},
+        {ok, _ } = supervisor:start_child(dds_datawriters_pool_sup, 
+                        [{data_writer, builtin_msg_writer, P_info, P2P_Writer_Config}]),
+        
         {ok,#state{ rtps_participant_info=P_info, 
                 builtin_pub_announcer= {data_w_of, GUID_p}, 
-                builtin_sub_announcer = {data_w_of, GUID_s}}}.
+                builtin_sub_announcer = {data_w_of, GUID_s}, 
+                builtin_msg_writer = {data_w_of, GUID_MW}}}.
 
 handle_call({create_datawriter,Topic}, _, 
                 #state{rtps_participant_info=P_info,data_writers=Writers, 

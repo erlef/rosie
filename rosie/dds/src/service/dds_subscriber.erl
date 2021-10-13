@@ -13,6 +13,7 @@
         rtps_participant_info=#participant{},
         builtin_pub_detector,
         builtin_sub_detector,
+        builtin_msg_reader,
         data_readers = [],
         incremental_key=1}).
 
@@ -60,8 +61,18 @@ init([]) ->
         SEDP_Sub_Config = #endPoint{guid = GUID_s}, 
         {ok, _ } = supervisor:start_child(dds_datareaders_pool_sup,
                 [{data_reader, dds_sub_detector, P_info, SEDP_Sub_Config}]),
+
+        % The builtin message reader for general purpose comunications between DDS participants
+        GUID_MR = #guId{ prefix =  P_info#participant.guid#guId.prefix, 
+                        entityId = ?ENTITYID_P2P_BUILTIN_PARTICIPANT_MESSAGE_READER},        
+        P2P_Reader_Config = #endPoint{guid = GUID_MR},
+        {ok, _ } = supervisor:start_child(dds_datawriters_pool_sup, 
+                        [{data_writer, builtin_msg_reader, P_info, P2P_Reader_Config}]),
         
-        {ok,#state{ rtps_participant_info=P_info, builtin_pub_detector = {data_r_of,GUID_p}, builtin_sub_detector = {data_r_of,GUID_s}}}.
+        {ok,#state{ rtps_participant_info=P_info, 
+                        builtin_pub_detector = {data_r_of,GUID_p}, 
+                        builtin_sub_detector = {data_r_of,GUID_s}, 
+                        builtin_msg_reader = {data_r_of,GUID_MR}}}.
 
 handle_call({create_datareader,Topic}, _, #state{rtps_participant_info=P_info,
                                         data_readers = Readers, incremental_key = K}=S) ->     
