@@ -8,7 +8,7 @@
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
--include_lib("rmw_dds_common/src/_rosie/participant_entities_info_msg.hrl").
+-include_lib("rmw_dds_common/src/_rosie/rmw_dds_common_participant_entities_info_msg.hrl").
 
 start_link() -> gen_server:start_link(?MODULE, [], []).
 on_data_available(Name, {ReaderPid, ChangeKey}) -> 
@@ -26,13 +26,13 @@ handle_cast({on_data_available, { ReaderPid, ChangeKey}},S) ->
         %io:format("ROS: notified of new discovery data:\n"),
         {Info,_} = participant_entities_info_msg:parse(SerializedPayload),
         %Info = parse_ros_discovery_info(SerializedPayload),
-        io:format("ROS: Participant GID: ~p\n",[Info#participant_entities_info.gid]),
-        io:format("ROS: found ~p nodes:\n",[ erlang:length(Info#participant_entities_info.node_entities_info_seq)]),
-        [ print_node_info(I) || I <- Info#participant_entities_info.node_entities_info_seq],
+        io:format("ROS: Participant GID: ~p\n",[Info#rmw_dds_common_participant_entities_info.gid]),
+        io:format("ROS: found ~p nodes:\n",[ erlang:length(Info#rmw_dds_common_participant_entities_info.node_entities_info_seq)]),
+        [ print_node_info(I) || I <- Info#rmw_dds_common_participant_entities_info.node_entities_info_seq],
         {noreply,S};
 handle_cast(_,S) -> {noreply,S}.
 
-print_node_info(#node_entities_info{
+print_node_info(#rmw_dds_common_node_entities_info{
                                 node_namespace = Namespace,
                                 node_name = NodeName,
                                 reader_gid_seq = EntitiesR,

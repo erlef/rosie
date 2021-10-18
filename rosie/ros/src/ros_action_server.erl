@@ -9,10 +9,10 @@
 -export([init/1,handle_call/3,handle_cast/2]).
 
 -include_lib("dds/include/dds_types.hrl").
--include_lib("action_msgs/src/_rosie/goal_status_array_msg.hrl").
--include_lib("action_msgs/src/_rosie/cancel_goal_srv.hrl").
+-include_lib("action_msgs/src/_rosie/action_msgs_goal_status_array_msg.hrl").
+-include_lib("action_msgs/src/_rosie/action_msgs_cancel_goal_srv.hrl").
 
--record(goal,{uuid,time= #time{},status=?STATUS_ACCEPTED}).
+-record(goal,{uuid,time= #builtin_interfaces_time{},status=?STATUS_ACCEPTED}).
 
 -record(state,{node,
         % module holding interface infos
@@ -103,15 +103,15 @@ handle_call({on_client_request,{{ClientId,RequestNumber},Msg}}, _, #state{action
         end.
 
 handle_cast({cancel_goal,UUID}, #state{action_interface= AI, cancel_goal_service = CancelGoalService}=S) -> 
-        G_INFO = #goal_info{goal_id=UUID},
+        G_INFO = #action_msgs_goal_info{goal_id=UUID},
         NewState = clear_cache_for_goal(UUID, mark_goal_as(UUID,?STATUS_CANCELED,S)),
         {noreply,publish_goal_status_update(NewState)};
 handle_cast(_,S) -> {noreply,S}.
 
 publish_goal_status_update(#state{action_interface= AI, status_publisher=S_PUB, goals_accepted=GA}=S) ->
-        LIST = [ #goal_status{goal_info=#goal_info{goal_id=UUID,stamp=T},status=STATUS} 
+        LIST = [ #action_msgs_goal_status{goal_info=#action_msgs_goal_info{goal_id=UUID,stamp=T},status=STATUS} 
                         || #goal{uuid=UUID, time=T, status=STATUS} <- maps:values(GA)],
-        ros_publisher:publish(S_PUB,#goal_status_array{status_list=LIST}),
+        ros_publisher:publish(S_PUB,#action_msgs_goal_status_array{status_list=LIST}),
         S.
 
 h_manage_goal_request(Msg,#state{action_interface= AI, callback_handler={M,Pid}, goals_accepted=GA}=S) -> 
@@ -120,7 +120,7 @@ h_manage_goal_request(Msg,#state{action_interface= AI, callback_handler={M,Pid},
                 0 ->    {reply,Reply,S};
                 1 ->    M:on_execute_goal(Pid,Msg), 
                         NewState = S#state{goals_accepted= GA#{AI:get_goal_id(Msg) => 
-                                                                #goal{uuid=AI:get_goal_id(Msg),time = #time{},status=?STATUS_EXECUTING}}},
+                                                                #goal{uuid=AI:get_goal_id(Msg),time = #builtin_interfaces_time{},status=?STATUS_EXECUTING}}},
                         {reply, Reply, publish_goal_status_update(NewState)}
         end.
 
@@ -152,26 +152,26 @@ h_manage_result_request(ClientID, RequestNumber, Msg, #state{action_interface= A
 
 
  % if uuid is 0 or time is 0 i do not handle them for now
-h_manage_cancel_request(#cancel_goal_rq{goal_info=#goal_info{goal_id=#u_u_i_d{uuid= <<0:16/binary>>}}},S) ->
+h_manage_cancel_request(#action_msgs_cancel_goal_rq{goal_info=#action_msgs_goal_info{goal_id=#unique_identifier_msgs_u_u_i_d{uuid= <<0:16/binary>>}}},S) ->
         io:format("[ROS_ACTION_SERVER]: not implemented: management of multiple goals cancellation."),
-        {reply,#cancel_goal_rp{return_code=?ERROR_REJECTED},S};
-h_manage_cancel_request(#cancel_goal_rq{goal_info=#goal_info{goal_id=UUID,stamp=T}}=R,
+        {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_REJECTED},S};
+h_manage_cancel_request(#action_msgs_cancel_goal_rq{goal_info=#action_msgs_goal_info{goal_id=UUID,stamp=T}}=R,
                 #state{action_interface= AI, 
                         goals_accepted =GA,
                         callback_handler={M,Pid}}=S) ->
         case maps:get(UUID, GA, not_found) of
-                not_found -> {reply,#cancel_goal_rp{return_code=?ERROR_UNKNOWN_GOAL_ID},S};
-                #goal{status=?STATUS_CANCELED} -> {reply,#cancel_goal_rp{return_code=?ERROR_GOAL_TERMINATED},S};
-                #goal{status=?STATUS_SUCCEEDED} -> {reply,#cancel_goal_rp{return_code=?ERROR_GOAL_TERMINATED},S};
+                not_found -> {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_UNKNOWN_GOAL_ID},S};
+                #goal{status=?STATUS_CANCELED} -> {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_GOAL_TERMINATED},S};
+                #goal{status=?STATUS_SUCCEEDED} -> {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_GOAL_TERMINATED},S};
                 _ -> case M:on_cancel_goal_request(Pid,R) of
                         accept ->
-                                G_INFO = #goal_info{goal_id=UUID},
+                                G_INFO = #action_msgs_goal_info{goal_id=UUID},
                                 M:on_cancel_goal(Pid,UUID),
-                                {reply,#cancel_goal_rp{return_code=?ERROR_NONE,goals_canceling=[G_INFO]}, 
+                                {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_NONE,goals_canceling=[G_INFO]}, 
                                          publish_goal_status_update(mark_goal_as(UUID,?STATUS_CANCELING,S))};
-                        reject -> {reply,#cancel_goal_rp{return_code=?ERROR_REJECTED}, S};
+                        reject -> {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_REJECTED}, S};
                         _ ->    io:format("[ROS_ACTION_SERVER] bad cancel reply, defaulting to reject"),
-                                {reply,#cancel_goal_rp{return_code=?ERROR_REJECTED}, S}
+                                {reply,#action_msgs_cancel_goal_rp{return_code=?ERROR_REJECTED}, S}
                 end
         end.
 

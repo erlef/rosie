@@ -11,7 +11,7 @@
 
 
 % We are going to use Fibonacci.action, so we include its header to use record definitions of all of its components.
--include_lib("example_interfaces/src/_rosie/fibonacci_action.hrl").
+-include_lib("example_interfaces/src/_rosie/example_interfaces_fibonacci_action.hrl").
 
 -record(state,{ ros_node,
                 action_server,
@@ -41,25 +41,25 @@ init(_) ->
         Node = ros_context:create_node("minimal_action_server"),
 
         % The action uses our Node to create it's services and topics
-        ActionServer = ros_context:create_action_server(Node, fibonacci_action, {?MODULE, self()}),
+        ActionServer = ros_context:create_action_server(Node, example_interfaces_fibonacci_action, {?MODULE, self()}),
 
         {ok,#state{ros_node=Node, action_server = ActionServer}}.
 
 % This server only accepts one goal at a time, we reject all the others if goal_id is already set
-handle_call({on_new_goal_request, #fibonacci_send_goal_rq{goal_id=UUID}}, _ ,#state{goal_id=none} = S)-> 
-        io:format("Received goal request with id ~p\n",[UUID#u_u_i_d.uuid]),
-        {reply, #fibonacci_send_goal_rp{responce_code=1}, S};
-handle_call({on_new_goal_request, #fibonacci_send_goal_rq{goal_id=UUID}}, _, S)-> 
-        io:format("Rejecting goal request with id ~p\n",[UUID#u_u_i_d.uuid]),
-        {reply, #fibonacci_send_goal_rp{responce_code=0}, S};
-handle_call({on_cancel_goal_request, #cancel_goal_rq{goal_info=#goal_info{goal_id=UUID}}}, _, S) -> 
-        io:format("Accepting cancel request for ~p\n",[UUID#u_u_i_d.uuid]),
+handle_call({on_new_goal_request, #example_interfaces_fibonacci_send_goal_rq{goal_id=UUID}}, _ ,#state{goal_id=none} = S)-> 
+        io:format("Received goal request with id ~p\n",[UUID#unique_identifier_msgs_u_u_i_d.uuid]),
+        {reply, #example_interfaces_fibonacci_send_goal_rp{responce_code=1}, S};
+handle_call({on_new_goal_request, #example_interfaces_fibonacci_send_goal_rq{goal_id=UUID}}, _, S)-> 
+        io:format("Rejecting goal request with id ~p\n",[UUID#unique_identifier_msgs_u_u_i_d.uuid]),
+        {reply, #example_interfaces_fibonacci_send_goal_rp{responce_code=0}, S};
+handle_call({on_cancel_goal_request, #action_msgs_cancel_goal_rq{goal_info=#action_msgs_goal_info{goal_id=UUID}}}, _, S) -> 
+        io:format("Accepting cancel request for ~p\n",[UUID#unique_identifier_msgs_u_u_i_d.uuid]),
         % Accepting will put the action in cancelling state
         {reply, accept, S}; % use 'reject' atom to reject the cancel request
 handle_call(_,_,S) -> {reply,ok,S}.
 
-handle_cast({on_execute_goal, #fibonacci_send_goal_rq{goal_id=UUID,order=ORDER}}, S) -> 
-        io:format("Executing goal: ~p\n",[UUID#u_u_i_d.uuid]),
+handle_cast({on_execute_goal, #example_interfaces_fibonacci_send_goal_rq{goal_id=UUID,order=ORDER}}, S) -> 
+        io:format("Executing goal: ~p\n",[UUID#unique_identifier_msgs_u_u_i_d.uuid]),
         erlang:send_after(1000, self(), {next_step,[1,0],ORDER-2}),
         {noreply, S#state{goal_id = UUID}};
 handle_cast({on_cancel_goal, UUID}, #state{action_server=AS} = S) -> 
@@ -77,13 +77,13 @@ handle_info({next_step,_,_},#state{goal_id=none}=S) ->
 handle_info({next_step,L,Counter},#state{action_server=AS,goal_id=UUID}=S) when Counter < 0 ->
         List = lists:reverse(L),
         io:format("Returning result: ~p\n",[List]),
-        ros_action_server:publish_result(AS,UUID,#fibonacci_get_result_rp{goal_status = 4, sequence = List}),
+        ros_action_server:publish_result(AS,UUID,#example_interfaces_fibonacci_get_result_rp{goal_status = 4, sequence = List}),
         {noreply,S#state{goal_id=none}};
 handle_info({next_step,[Last_1|[Last_2|_]]=L,Counter},#state{action_server=AS,goal_id=UUID}=S) ->
         Step =[Last_1+Last_2|L],
         List = lists:reverse(Step),
         io:format("Publishing feedback: ~p\n",[List]),
-        ros_action_server:publish_feedback(AS,#fibonacci_feedback_message{goal_id=UUID,sequence = List}),
+        ros_action_server:publish_feedback(AS,#example_interfaces_fibonacci_feedback_message{goal_id=UUID,sequence = List}),
         erlang:send_after(1000, self(), {next_step,[Last_1+Last_2|L],Counter-1}),
         {noreply,S}.
 

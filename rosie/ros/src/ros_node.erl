@@ -9,7 +9,7 @@
 -export([init/1,handle_call/3,handle_cast/2]).
 
 
--include_lib("rmw_dds_common/src/_rosie/participant_entities_info_msg.hrl").
+-include_lib("rmw_dds_common/src/_rosie/rmw_dds_common_participant_entities_info_msg.hrl").
 -include_lib("dds/include/dds_types.hrl").
 -include_lib("dds/include/rtps_structure.hrl").
 % -include_lib("dds/include/rtps_constants.hrl").
@@ -56,7 +56,7 @@ init(Name) ->
                                    history= {?KEEP_ALL_HISTORY_QOS,-1}
                                 },
 
-        {ok, _} = supervisor:start_child(ros_subscriptions_sup, [participant_entities_info_msg,"ros_discovery_info",Qos_profile,{?MODULE, {ros_node,Name}}]),
+        {ok, _} = supervisor:start_child(ros_subscriptions_sup, [rmw_dds_common_participant_entities_info_msg,"ros_discovery_info",Qos_profile,{?MODULE, {ros_node,Name}}]),
         %{ok, _} = supervisor:start_child(ros_publishers_sup, [participant_entities_info_msg,Qos_profile,"ros_discovery_info"]),
 
         %update_ros_discovery(Name),
@@ -100,7 +100,7 @@ put_topic_prefix(N) ->
 %         dds_data_r:set_listener(DR, {Name, Module});
 
 guid_to_gid(#guId{prefix=PREFIX,entityId=#entityId{key=KEY,kind=KIND}}) -> 
-        #gid{data=binary_to_list(<<PREFIX/binary, KEY/binary, KIND, 0:64>>) }.
+        #rmw_dds_common_gid{data=binary_to_list(<<PREFIX/binary, KEY/binary, KIND, 0:64>>) }.
 
 update_ros_discovery(NodeName) -> 
 
@@ -112,12 +112,12 @@ update_ros_discovery(NodeName) ->
                 
         #participant{guid=P_GUID} = rtps_participant:get_info(participant),
         P_GID = guid_to_gid(P_GUID),
-        NodeEntity = #node_entities_info{
+        NodeEntity = #rmw_dds_common_node_entities_info{
                 node_namespace="/",
                 node_name=NodeName,
                 reader_gid_seq= Rgids,
                 writer_gid_seq= Wgids},
-        Msg = #participant_entities_info{
+        Msg = #rmw_dds_common_participant_entities_info{
                 gid=P_GID,
                 node_entities_info_seq=[NodeEntity]},
         ros_publisher:publish({ros_publisher,"ros_discovery_info"}, Msg).

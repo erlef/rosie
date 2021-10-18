@@ -70,7 +70,7 @@ handle_call({wait_for_service,Timeout}, {Caller,_}, S) ->
 handle_call(service_is_ready, _, #state{dds_data_writer=DW, dds_data_reader=DR} = S) ->
         {reply, h_service_is_ready(S), S};
 handle_call({send_request_and_wait, Request}, From, #state{dds_data_writer = DW,service_handle = Service, client_id=ID} = S) -> 
-        Serialized = Service:serialize_request(ID,Request),
+        Serialized = Service:serialize_request(ID,1,Request),
         dds_data_w:write(DW, Serialized),
         {noreply,S#state{waiting_caller = From}};
 handle_call(_,_,S) -> {reply,ok,S}.

@@ -10,8 +10,8 @@
 -behaviour(gen_server).
 -export([init/1,handle_call/3,handle_cast/2,handle_info/2]).
 
--include_lib("action_msgs/src/_rosie/goal_status_array_msg.hrl").
--include_lib("action_msgs/src/_rosie/cancel_goal_srv.hrl").
+-include_lib("action_msgs/src/_rosie/action_msgs_goal_status_array_msg.hrl").
+-include_lib("action_msgs/src/_rosie/action_msgs_cancel_goal_srv.hrl").
 
 -record(state,{node,
         % module holding interface infos
@@ -69,8 +69,8 @@ init(#state{node = Node, action_interface = Action,
         FeedbackSub = ros_node:create_subscription(Node, Action:get_feedback_msg_module(), Action:get_action_name()++"/_action/feedback", {?MODULE,Name}),
         
         %standard but names must be specialized for this action instance
-        CancelGoalClient = ros_node:create_client(Node, {cancel_goal_srv, Action:get_action_name()++"/_action/"}, {?MODULE,Name}),
-        StatusSub = ros_node:create_subscription(Node, goal_status_array_msg,  Action:get_action_name()++"/_action/status", {?MODULE,Name}),
+        CancelGoalClient = ros_node:create_client(Node, {action_msgs_cancel_goal_srv, Action:get_action_name()++"/_action/"}, {?MODULE,Name}),
+        StatusSub = ros_node:create_subscription(Node, action_msgs_goal_status_array_msg,  Action:get_action_name()++"/_action/status", {?MODULE,Name}),
 
         {ok,S#state{
         request_goal_client = RequestGoalClient,        
@@ -152,5 +152,5 @@ s_code_to_str(?STATUS_ABORTED) -> "STATUS_ABORTED".
 h_handle_status_update(GoalStatusArrayMsg, S) -> 
         io:format("[ROS_ACTION_CLIENT]: received goal states update: \n"),
         [ io:format("\t~p -> ~p\n",[UUID,s_code_to_str(N)]) || 
-                #goal_status{goal_info=#goal_info{goal_id=#u_u_i_d{uuid=UUID}},status=N} <- GoalStatusArrayMsg#goal_status_array.status_list],
+                #action_msgs_goal_status{goal_info=#action_msgs_goal_info{goal_id=#unique_identifier_msgs_u_u_i_d{uuid=UUID}},status=N} <- GoalStatusArrayMsg#action_msgs_goal_status_array.status_list],
         S.
