@@ -1,8 +1,8 @@
 -module(ros_nodes_pool_sup).
 
 -behaviour(supervisor).
--export([start_link/0]).
 
+-export([start_link/0]).
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
@@ -22,14 +22,16 @@ start_link() ->
 
 init([]) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
-    SupFlags = #{strategy => simple_one_for_one,
-                intensity => 0,
-                period => 1},
-    Node = [#{id => ros_node_sup,
-            start => {ros_node_sup,start_link,[]},
-            restart => permanent,  
-            shutdown => 5000,
-            type => supervisor}],
+    SupFlags =
+        #{strategy => simple_one_for_one,
+          intensity => 0,
+          period => 1},
+    Node =
+        [#{id => ros_node_sup,
+           start => {ros_node_sup, start_link, []},
+           restart => permanent,
+           shutdown => 5000,
+           type => supervisor}],
 
     {ok, {SupFlags, Node}}.
 

@@ -1,8 +1,8 @@
 -module(turtle_controller_sup).
 
 -behaviour(supervisor).
--export([start_link/0]).
 
+-export([start_link/0]).
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
@@ -21,14 +21,16 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
-                 intensity => 0,
-                 period => 1},
-    Controller =  #{id => turtle_controller,
-             start => {turtle_controller, start_link, []},
-             restart => transient,  
-             shutdown => 5000,
-             type => worker},
+    SupFlags =
+        #{strategy => one_for_all,
+          intensity => 0,
+          period => 1},
+    Controller =
+        #{id => turtle_controller,
+          start => {turtle_controller, start_link, []},
+          restart => transient,
+          shutdown => 5000,
+          type => worker},
 
     ChildSpecs = [Controller],
 

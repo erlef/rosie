@@ -1,8 +1,8 @@
 -module(ros_sup).
 
 -behaviour(supervisor).
--export([start_link/0]).
 
+-export([start_link/0]).
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
@@ -22,32 +22,38 @@ start_link() ->
 
 init([]) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
-    SupFlags = #{strategy => one_for_all,
-                intensity => 0,
-                period => 1},
+    SupFlags =
+        #{strategy => one_for_all,
+          intensity => 0,
+          period => 1},
 
-    ROS_ACTION_SEVERS_POOL =  #{id => ros_action_servers_sup,
-        start => {ros_action_servers_sup,start_link,[]},
-        restart => permanent,  
-        shutdown => 5000,
-        type => supervisor},
-    ROS_ACTION_CLIENTS_POOL =  #{id => ros_action_clients_sup,
-        start => {ros_action_clients_sup,start_link,[]},
-        restart => permanent,  
-        shutdown => 5000,
-        type => supervisor},
-    ROS_NODES_POOL =  #{id => ros_nodes_pool_sup,
-            start => {ros_nodes_pool_sup,start_link,[]},
-            restart => permanent,  
-            shutdown => 5000,
-            type => supervisor},
-    ROS_CONTEXT =  #{id => ros_context,
-            start => {ros_context,start_link,[]},
-            restart => permanent,  
-            shutdown => 5000,
-            type => worker},
-            
-    ChildSpecs = [ROS_NODES_POOL,ROS_ACTION_CLIENTS_POOL,ROS_ACTION_SEVERS_POOL,ROS_CONTEXT],
+    ROS_ACTION_SEVERS_POOL =
+        #{id => ros_action_servers_sup,
+          start => {ros_action_servers_sup, start_link, []},
+          restart => permanent,
+          shutdown => 5000,
+          type => supervisor},
+    ROS_ACTION_CLIENTS_POOL =
+        #{id => ros_action_clients_sup,
+          start => {ros_action_clients_sup, start_link, []},
+          restart => permanent,
+          shutdown => 5000,
+          type => supervisor},
+    ROS_NODES_POOL =
+        #{id => ros_nodes_pool_sup,
+          start => {ros_nodes_pool_sup, start_link, []},
+          restart => permanent,
+          shutdown => 5000,
+          type => supervisor},
+    ROS_CONTEXT =
+        #{id => ros_context,
+          start => {ros_context, start_link, []},
+          restart => permanent,
+          shutdown => 5000,
+          type => worker},
+
+    ChildSpecs =
+        [ROS_NODES_POOL, ROS_ACTION_CLIENTS_POOL, ROS_ACTION_SEVERS_POOL, ROS_CONTEXT],
 
     {ok, {SupFlags, ChildSpecs}}.
 

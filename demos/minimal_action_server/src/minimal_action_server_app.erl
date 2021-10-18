@@ -11,4 +11,3 @@ stop(_State) ->
     ok.
 
 %% internal functions
-
