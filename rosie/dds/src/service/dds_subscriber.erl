@@ -205,6 +205,6 @@ match_reader_with_writer(DR, WriterData, Participants) ->
     Proxy =
         #writer_proxy{guid = WriterData#sedp_disc_endpoint_data.endpointGuid,
                       unicastLocatorList = P#spdp_disc_part_data.default_uni_locator_l,
-                      multicastLocatorList = P#spdp_disc_part_data.default_multi_locato_l},
+                      multicastLocatorList = P#spdp_disc_part_data.default_multi_locator_l},
     %io:format("Matching: ~p with ~p\n",[DR,Proxy]),
     dds_data_r:remote_writer_add(DR, Proxy).

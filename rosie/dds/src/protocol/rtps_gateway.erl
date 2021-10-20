@@ -21,7 +21,8 @@ send(Pid, {Data, Dst}) ->
 init(State) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
     pg:join(rtps_gateway, self()),
-    {ok, S} = gen_udp:open(0),
+    LocalInterface = rtps_network_utils:get_local_ip(),
+    {ok, S} = gen_udp:open(0,[{ip, LocalInterface}, binary, {active, true}]),
     {ok, State#state{socket = S}}.
 
 % handle_call({send,{Datagram,Dst}}, _, #state{socket=S}=State) ->
@@ -30,7 +31,12 @@ handle_call(_, _, State) ->
     {reply, ok, State}.
 
 handle_cast({send, {Datagram, Dst}}, #state{socket = S} = State) ->
-    ok = gen_udp:send(S, Dst, Datagram),
+    case gen_udp:send(S, Dst, Datagram) of
+        ok -> ok;
+        {error, Reason} -> 
+                        io:format("[GATEWAY]: failed sending to: ~p\n",[Dst]),
+                        io:format("[GATEWAY]: reason of failure: ~p\n",[Reason])
+    end,
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.

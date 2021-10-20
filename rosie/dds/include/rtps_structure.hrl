@@ -13,7 +13,8 @@
 -record(time, {seconds, fraction}). % // franction is: sec/2^32
 -record(locator, {kind, ip, port}).
 -record(reader_locator,
-        {locator = #locator{},
+        {
+         locator = #locator{},
          requested_changes = [],
          unsent_changes = [],
          expectsInlineQos = false}).
@@ -89,7 +90,7 @@
          vendorId,
          expectsInlineQos = false,
          default_uni_locator_l = [], % at least 1
-         default_multi_locato_l = [],
+         default_multi_locator_l = [],
          meta_uni_locator_l = [],
          meta_multi_locator_l = [],
          manualLivelinessCount,

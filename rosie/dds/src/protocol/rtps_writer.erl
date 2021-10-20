@@ -152,7 +152,8 @@ h_update_reader_locator_list(RL_List,
     S#state{reader_locators = RLStillValid ++ reset_locators(Changes, NewRLS)}.
 
 h_reader_locator_add(L, #state{reader_locators = RL} = S) ->
-    S#state{reader_locators = [#reader_locator{locator = L} | RL]}.
+    NewRL = sets:to_list(sets:add_element(#reader_locator{locator = L},sets:from_list(RL))),
+    S#state{reader_locators = NewRL}.
 
 h_reader_locator_remove(L, #state{reader_locators = RL} = S) ->
     S#state{reader_locators = [Loc || Loc <- RL, Loc#reader_locator.locator /= L]}.

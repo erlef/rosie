@@ -49,8 +49,8 @@ pl_to_discov_part_data(D, [{default_uni_locator, V} | TL]) ->
                                                      ++ [V]},
                            TL);
 pl_to_discov_part_data(D, [{default_multi_locator, V} | TL]) ->
-    pl_to_discov_part_data(D#spdp_disc_part_data{default_multi_locato_l =
-                                                     D#spdp_disc_part_data.default_multi_locato_l
+    pl_to_discov_part_data(D#spdp_disc_part_data{default_multi_locator_l =
+                                                     D#spdp_disc_part_data.default_multi_locator_l
                                                      ++ [V]},
                            TL);
 pl_to_discov_part_data(D, [{meta_uni_locator, V} | TL]) ->
@@ -306,32 +306,13 @@ close_sockets([{_, Socket, _, _} | TL]) ->
     gen_udp:close(Socket).
 
 % callback helpers
-get_ipv4_from_opts([]) ->
-    {0, 0, 0, 0};
-get_ipv4_from_opts([{addr, {_1, _2, _3, _4}} | _]) ->
-    {_1, _2, _3, _4};
-get_ipv4_from_opts([_ | TL]) ->
-    get_ipv4_from_opts(TL).
-
-flags_are_ok(Cfg) ->
-    [{flags, Flags} | _] = Cfg,
-    lists:member(up, Flags)
-    and lists:member(running, Flags)
-    and not lists:member(loopback, Flags).
-
-get_local_ip() ->
-    {ok, Interfaces} = inet:getifaddrs(),
-    % getting the first interface that is at least up and running and not for loopback
-    [Opts | _] = [Cfg || {Name, Cfg} <- Interfaces, flags_are_ok(Cfg)],
-    get_ipv4_from_opts(Opts).
-
 open_udp_locators(_, [], S) ->
     S;
 open_udp_locators(unicast,
                   [#locator{ip = _, port = P} | TL],
                   #state{openedSockets = Soc} = S) ->
-    LocalInterface = get_local_ip(),
-    {ok, Socket} = gen_udp:open(P, [{ip, LocalInterface}, binary, {active, true}]),
+    LocalInterface = rtps_network_utils:get_local_ip(),
+    {ok, Socket} = gen_udp:open(P, [{ip, {0,0,0,0}}, binary, {active, true}]),
     {ok, Port} = inet:port(Socket),
     open_udp_locators(unicast,
                       TL,
@@ -340,14 +321,14 @@ open_udp_locators(multicast,
                   [#locator{ip = IP, port = P} | TL],
                   #state{openedSockets = Soc} = S) ->
     %io:format("~p.erl Opened Socket!\n",[?MODULE]),
-    LocalInterface = get_local_ip(),
+    LocalInterface = rtps_network_utils:get_local_ip(),
     {ok, Socket} =
         gen_udp:open(P,
                      [{reuseaddr, true},
                       {ip, LocalInterface}, %{multicast_loop, false},
                       binary,
                       {active, true},
-                      {add_membership, {IP, {0, 0, 0, 0}}}]),
+                      {add_membership, {IP, LocalInterface}}]),
     {ok, Port} = inet:port(Socket),
     open_udp_locators(multicast,
                       TL,

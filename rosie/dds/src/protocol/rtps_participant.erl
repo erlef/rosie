@@ -101,21 +101,25 @@ handle_cast({start_discovery, EndPointSet},
 handle_cast({send_to_all_readers, Msg}, State) ->
     h_send_to_all_readers(Msg),
     {noreply, State};
-handle_cast({on_change_available, _}, #state{spdp_reader_guid = R_GUID} = State) ->
+handle_cast({on_change_available, _}, #state{spdp_reader_guid = R_GUID, spdp_writer_guid = W_GUID} = State) ->
+    %io:format("P data!\n"),
     CacheContent = rtps_history_cache:get_all_changes({cache_of, R_GUID}),
-    LEAVING =
-        [WGUID
-         || #cacheChange{writerGuid = WGUID, data = #spdp_disc_part_data{status_qos = S}}
-                <- CacheContent,
-            ?ENDPOINT_LEAVING(S)],
+    LEAVING = [ {WGUID,D} || #cacheChange{writerGuid = WGUID, data = #spdp_disc_part_data{status_qos = S} = D} <- CacheContent, ?ENDPOINT_LEAVING(S)],
+    {LEAVING_GUIDS , LEAVING_DATA} = lists:unzip(LEAVING),
+    
     [rtps_history_cache:remove_change({cache_of, R_GUID}, {WGUID, SN})
      || #cacheChange{writerGuid = WGUID, sequenceNumber = SN} <- CacheContent,
-        lists:member(WGUID, LEAVING)],
-    dds_domain_participant:update_participants_list(dds,
-                                                    [D
-                                                     || #cacheChange{data = D}
-                                                            <- rtps_history_cache:get_all_changes({cache_of,
-                                                                                                   R_GUID})]),
+        lists:member(WGUID, LEAVING_GUIDS)],
+    % clear unicast locators of the participants who left
+    % InvalidLocators = lists:flatten([ L || #spdp_disc_part_data{default_uni_locator_l=L} <- LEAVING_DATA]),
+    % [rtps_writer:reader_locator_remove(W_GUID,L) || L <- InvalidLocators],
+
+    % the cache is updated, all changes are valid
+    ValidParticipants = [ D|| #cacheChange{data = D} <- rtps_history_cache:get_all_changes({cache_of, R_GUID})],
+    dds_domain_participant:update_participants_list(dds, ValidParticipants),
+    % make sure unicast locators are added to SPDP writer, in case multicast sending is not enough
+    % ValidLocators = lists:flatten([L || #spdp_disc_part_data{default_uni_locator_l=L} <- ValidParticipants]),
+    % [rtps_writer:reader_locator_add(W_GUID,L) || L <- ValidLocators],
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
@@ -170,7 +174,7 @@ produce_SPDP_data(#participant{guid = ID} = P, EndPointSet) ->
                          vendorId = P#participant.vendorId,
                          domainId = P#participant.domainId,
                          default_uni_locator_l = [L || {Type, L} <- Locators, Type == unicast],
-                         default_multi_locato_l = [],
+                         default_multi_locator_l = [],
                          meta_uni_locator_l = [L || {Type, L} <- Locators, Type == unicast],
                          meta_multi_locator_l = [L || {Type, L} <- Locators, Type == multicast],
                          availableBuiltinEndpoints = EndPointSet,

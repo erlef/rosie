@@ -253,7 +253,7 @@ spdp_data_to_param_payload(#spdp_disc_part_data{domainId = D_ID,
                                                 vendorId = V_ID,
                                                 expectsInlineQos = InlineQoS,
                                                 default_uni_locator_l = D_UNI_L, % at least 1
-                                                default_multi_locato_l = D_MULTI_L,
+                                                default_multi_locator_l = D_MULTI_L,
                                                 meta_uni_locator_l = M_UNI_L,
                                                 meta_multi_locator_l = M_MULTI_L,
                                                 availableBuiltinEndpoints =
@@ -519,28 +519,29 @@ param_to_record(?PID_BUILTIN_ENDPOINT_SET, <<P:32/little-unsigned-integer>>) ->
     {builtin_endpoint_set, P};
 param_to_record(?PID_DOMAIN_ID, P) ->
     {domain_id, P};
+% I do not care of locators who are not IPv4
 param_to_record(?PID_DEFAULT_UNICAST_LOCATOR,
-                <<Kind:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
+                <<?LOCATOR_KIND_UDPv4:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
     {default_uni_locator,
-     #locator{kind = Kind,
+     #locator{kind = ?LOCATOR_KIND_UDPv4,
               port = Port,
               ip = {IP_1, IP_2, IP_3, IP_4}}};
 param_to_record(?PID_DEFAULT_MULTICAST_LOCATOR,
-                <<Kind:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
+                <<?LOCATOR_KIND_UDPv4:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
     {default_multi_locator,
-     #locator{kind = Kind,
+     #locator{kind = ?LOCATOR_KIND_UDPv4,
               port = Port,
               ip = {IP_1, IP_2, IP_3, IP_4}}};
 param_to_record(?PID_METATRAFFIC_UNICAST_LOCATOR,
-                <<Kind:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
+                <<?LOCATOR_KIND_UDPv4:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
     {meta_uni_locator,
-     #locator{kind = Kind,
+     #locator{kind = ?LOCATOR_KIND_UDPv4,
               port = Port,
               ip = {IP_1, IP_2, IP_3, IP_4}}};
 param_to_record(?PID_METATRAFFIC_MULTICAST_LOCATOR,
-                <<Kind:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
+                <<?LOCATOR_KIND_UDPv4:32/little, Port:32/little, _:12/binary, IP_1:8, IP_2:8, IP_3:8, IP_4:8>>) ->
     {meta_multi_locator,
-     #locator{kind = Kind,
+     #locator{kind = ?LOCATOR_KIND_UDPv4,
               port = Port,
               ip = {IP_1, IP_2, IP_3, IP_4}}};
 param_to_record(?PID_TOPIC_NAME, <<L:32/little, Name:(L - 1)/binary, _/binary>>) ->
