@@ -427,13 +427,6 @@ serialize_acknack(#acknack{final_flag = FF} = A) ->
                                                flags = <<0:6, FF:1, 1:1>>}),
     <<SubHead/binary, Body/binary>>.
 
-% esempio
-%                      Start Stop          SN
-% voglio serializzare da 10 a 20 il sample 10
-% Base = Start = 10
-%  NumBits = 20 - 10 = 10 .... quindi BitMap <<0:Numbits(arrotondato)>>
-% per il 10 faccio (1 bsl (SN - base ))
-
 % DATA-SCANNING |X|X|X|N|K|D|Q|E|
 % FLAGS are: N = non-standard, K = key serialized, D= data present, Q = in-line-QOS, E = little endian
 % I expect little endian
@@ -444,8 +437,8 @@ debug_data_flags(<<_:3, N:1, K:1, D:1, Q:1, E:1>>) ->
 
 get_inline_qos(Inline_QOS_plus_data, QOS_list) ->
     case parse_param(Inline_QOS_plus_data) of
-        {?PID_SENTINEL, _, Serialized_Key} ->
-            {QOS_list, Serialized_Key};
+        {?PID_SENTINEL, _, Rest} ->
+            {QOS_list, Rest};
         {ID, Value, Next} ->
             get_inline_qos(Next, [param_to_record(ID, Value) | QOS_list])
     end.
@@ -453,12 +446,22 @@ get_inline_qos(Inline_QOS_plus_data, QOS_list) ->
 get_inline_qos(Inline_QOS_plus_data) ->
     get_inline_qos(Inline_QOS_plus_data, []).
 
-parse_data(<<_:3,
-             0:1,
-             0:1,
-             1:1,
-             0:1,
-             1:1>>,% expected flags: Data present, no inline-qos and little-endian
+parse_data(<<_:3, 0:1, 0:1, 0:1, 1:1, 1:1>>,% expected flags: Just Inline-qos and little-endian
+           <<_:16/bitstring,%extra flags not used
+             _:16/little,% OctetsToInlineQos not used for now
+             ReaderID:24,
+             ReaderKind:8,
+             WriterID:24,
+             WriterKind:8,
+             _:32,% usually is all 0
+             WriterSN:32/little-signed-integer,
+             Inline_QOS/binary>>) ->
+    {QOS_list, _} = get_inline_qos(Inline_QOS),
+    {QOS_list,
+        #entityId{key = <<ReaderID:24>>, kind = ReaderKind},
+        #entityId{key = <<WriterID:24>>, kind = WriterKind},
+        WriterSN};
+parse_data(<<_:3, 0:1, _:1, _:1, 0:1, 1:1>>,% expected flags: Data present or Serialized key, NO inline-qos and little-endian
            <<_:16/bitstring,%extra flags not used
              _:16/little,% OctetsToInlineQos not used for now
              ReaderID:24,
@@ -475,12 +478,7 @@ parse_data(<<_:3,
      WriterSN,
      <<Rappresentation_id:16>>,
      SerializedPayload};
-parse_data(<<_:3,
-             0:1,
-             1:1,
-             0:1,
-             1:1,
-             1:1>>,% expected flags: Serialized-Key, Inline-Qos and little-endian
+parse_data(<<_:3, 0:1, _:1, _:1, 1:1, 1:1>>,% expected flags: Data present or Serialized key, Inline-Qos and little-endian
            <<_:16/bitstring,%extra flags not used
              16:16/little,% OctetsToInlineQos expected to be 16
              ReaderID:24,

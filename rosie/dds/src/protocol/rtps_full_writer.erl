@@ -3,9 +3,9 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, on_change_available/2, on_change_removed/2, new_change/2,
+-export([start_link/1, on_change_available/2, on_change_removed/2, new_change/2, get_matched_readers/1,
          get_cache/1, update_matched_readers/2, matched_reader_add/2, matched_reader_remove/2,
-         is_acked_by_all/1, receive_acknack/2, flush_all_changes/1]).
+         is_acked_by_all/2, receive_acknack/2, flush_all_changes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -59,6 +59,10 @@ update_matched_readers(Name, R) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {update_matched_readers, R}).
 
+get_matched_readers(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, get_matched_readers).
+
 matched_reader_add(Name, R) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {matched_reader_add, R}).
@@ -67,9 +71,9 @@ matched_reader_remove(Name, R) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {matched_reader_remove, R}).
 
-is_acked_by_all(Name) ->
+is_acked_by_all(Name,ChangeKey) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:call(Pid, is_acked_by_all).
+    gen_server:call(Pid, {is_acked_by_all,ChangeKey}).
 
 receive_acknack(Name, Acknack) ->
     [Pid | _] = pg:get_members(Name),
@@ -102,12 +106,12 @@ handle_call({new_change, Data}, _, State) ->
     {reply, Change, NewState};
 handle_call(get_cache, _, State) ->
     {reply, State#state.history_cache, State};
-handle_call(is_acked_by_all, _, State) ->
-    {reply, h_is_acked_by_all(State), State};
+handle_call({is_acked_by_all,ChangeKey}, _, State) ->
+    {reply, h_is_acked_by_all(ChangeKey,State), State};
+handle_call(get_matched_readers, _, State) ->
+    {reply,  State#state.reader_proxies, State};
 handle_call(flush_all_changes, _, State) ->
-    {reply, h_flush_all_changes(State), State};
-handle_call(_, _, State) ->
-    {reply, ok, State}.
+    {reply, h_flush_all_changes(State), State}.
 
 handle_cast({on_change_available, ChangeKey}, S) ->
     {noreply, h_on_change_available(ChangeKey, S)};
@@ -120,9 +124,7 @@ handle_cast({matched_reader_add, Proxy}, State) ->
 handle_cast({matched_reader_remove, Guid}, State) ->
     {noreply, h_matched_reader_remove(Guid, State)};
 handle_cast({receive_acknack, Acknack}, State) ->
-    {noreply, h_receive_acknack(Acknack, State)};
-handle_cast(_, State) ->
-    {noreply, State}.
+    {noreply, h_receive_acknack(Acknack, State)}.
 
 handle_info(heartbeat_loop, State) ->
     {noreply, heartbeat_loop(State)};
@@ -283,8 +285,12 @@ reset_reader_proxies(Changes, [RP | TL], NewProxies) ->
     N_RP = RP#reader_proxy{changes_for_reader = ChangesForReaders},
     reset_reader_proxies(Changes, TL, [N_RP | NewProxies]).
 
-h_is_acked_by_all(_) ->
-    false.
+is_acked_by_reader(ChangeKey,#reader_proxy{changes_for_reader=Changes}) -> 
+    %[ io:format("~p with key = ~p\n",[S,Key]) || #change_for_reader{change_key=Key, status = S}=C <- Changes],
+    length([ C || #change_for_reader{change_key=Key, status = S}=C <- Changes, (ChangeKey==Key) and (S == acknowledged)]) >= 1.
+
+h_is_acked_by_all(ChangeKey, #state{reader_proxies = RP}) ->
+    lists:all(fun(Proxy) -> is_acked_by_reader(ChangeKey,Proxy) end, RP).
 
 add_change_to_proxies(Key, Proxies, Push) ->
     add_change_to_proxies(Key, Proxies, [], Push).
@@ -329,12 +335,10 @@ rm_change_from_proxies(Key, [Proxy | TL], NewProxies) ->
 h_on_change_removed(Key, #state{history_cache = C, reader_proxies = RP} = S) ->
     S#state{reader_proxies = rm_change_from_proxies(Key, RP)}.
 
-update_for_acknack([], _, _, S) ->
+update_for_acknack([], _, _, _, S) ->
     S;
-update_for_acknack([#reader_proxy{changes_for_reader = Changes} = Proxy | _],
-                   Others,
-                   Missed,
-                   S) ->
+update_for_acknack([#reader_proxy{ready = IsReady, changes_for_reader = Changes} = Proxy | _],
+                   Others,Missed, FinalFlag, S) ->
     ChangeKeys = [K || #change_for_reader{change_key = K} <- Changes],
     NewChangeList =
         lists:map(fun(C) ->
@@ -357,26 +361,26 @@ update_for_acknack([#reader_proxy{changes_for_reader = Changes} = Proxy | _],
                      end
                   end,
                   Changes),
+    % a remote reader is considered ready to receive only after it sent an acknack with a final flag
+    Readiness = not IsReady and (FinalFlag == 1),
     S#state{reader_proxies =
-                Others ++ [Proxy#reader_proxy{changes_for_reader = NewChangeList}]}.
+                Others ++ [Proxy#reader_proxy{ready = Readiness, changes_for_reader = NewChangeList}]}.
 
 h_receive_acknack(_, #state{reader_proxies = []} = S) ->
     S;
-h_receive_acknack(#acknack{readerGUID = RID, sn_range = Single},
+h_receive_acknack(#acknack{readerGUID = RID, final_flag = FF, sn_range = Single},
                   #state{reader_proxies = RP, history_cache = Cache} = S)
     when is_integer(Single) ->
     Others = [P || #reader_proxy{guid = G} = P <- RP, G /= RID],
-    update_for_acknack([P || #reader_proxy{guid = G} = P <- RP, G == RID],
-                       Others,
-                       [Single],
-                       S);
-h_receive_acknack(#acknack{readerGUID = RID, sn_range = Range},
+    update_for_acknack([P || #reader_proxy{guid = G} = P <- RP, G == RID], Others, [Single], FF, S);
+h_receive_acknack(#acknack{readerGUID = RID, final_flag = FF, sn_range = Range},
                   #state{reader_proxies = RP, history_cache = Cache} = S) ->
     Others = [P || #reader_proxy{guid = G} = P <- RP, G /= RID],
-    update_for_acknack([P || #reader_proxy{guid = G} = P <- RP, G == RID], Others, Range, S).
+    update_for_acknack([P || #reader_proxy{guid = G} = P <- RP, G == RID], Others, Range, FF, S).
 
 h_flush_all_changes(#state{entity = #endPoint{guid = #guId{prefix = Prefix}},
                            history_cache = HC,
                            datawrite_period = P,
                            reader_proxies = RP}) ->
     send_changes(unsent, Prefix, HC, RP).
+

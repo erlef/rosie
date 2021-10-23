@@ -80,7 +80,7 @@ init(#state{service_handle = Service, name_prefix = NP} = S) ->
              client_id = <<(crypto:strong_rand_bytes(8))/binary>>}}.
 
 handle_call({wait_for_service, Timeout}, {Caller, _}, S) ->
-    self() ! {wait_for_service_loop, Caller, Timeout, now()},
+    self() ! {wait_for_service_loop, Caller, Timeout, erlang:monotonic_time(millisecond)},
     {reply, ok, S};
 handle_call(service_is_ready,
             _,
@@ -94,9 +94,7 @@ handle_call({send_request_and_wait, Request},
                 S) ->
     Serialized = Service:serialize_request(ID, 1, Request),
     dds_data_w:write(DW, Serialized),
-    {noreply, S#state{waiting_caller = From}};
-handle_call(_, _, S) ->
-    {reply, ok, S}.
+    {noreply, S#state{waiting_caller = From}}.
 
 handle_cast({send_request_async, Request},
             #state{dds_data_writer = DW,
@@ -135,27 +133,27 @@ handle_cast({on_data_available, {Reader, ChangeKey}},
             {noreply, S};
         _ ->
             {noreply, S}
-    end;
-handle_cast(_, S) ->
-    {noreply, S}.
+    end.
 
 handle_info({wait_for_service_loop, Caller, Timeout, Start}, S) ->
-    case timer:now_diff(now(), Start) div 1000 < Timeout of
+    case (erlang:monotonic_time(millisecond) - Start) < Timeout of
         true ->
             case h_service_is_ready(S) of
                 true ->
-                    erlang:send_after(300, Caller, ros_service_ready);
+                    Caller ! ros_service_ready;
                 false ->
                     erlang:send_after(10, self(), {wait_for_service_loop, Caller, Timeout, Start})
             end;
         false ->
             Caller ! ros_timeout
     end,
-    {noreply, S};
-handle_info(_, S) ->
     {noreply, S}.
 
 h_service_is_ready(#state{dds_data_writer = DW, dds_data_reader = DR} = S) ->
     Pubs = dds_data_r:get_matched_publications(DR), %io:format("~p\n",[Pubs]),
     Subs = dds_data_w:get_matched_subscriptions(DW), %io:format("~p\n",[Subs]),
-    (length(Pubs) > 0) and (length(Subs) > 0).
+    DEF_PUB = dds_domain_participant:get_default_publisher(dds),
+    (length(Pubs) > 0) and 
+    (length(Subs) > 0) and 
+    dds_publisher:endpoint_has_been_acknoledged(DEF_PUB, DR) and
+    dds_publisher:endpoint_has_been_acknoledged(DEF_PUB, DW).

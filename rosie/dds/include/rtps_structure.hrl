@@ -23,7 +23,7 @@
 % status can be:
 % UNSENT, UNACKNOWLEDGED, REQUESTED, ACKNOWLEDGED, UNDERWAY
 
--record(change_from_writer, {change_key, status, is_relevant = true}).
+-record(change_from_writer, {change_key, status=unknown, is_relevant = true}).
 
 % status can be:
 % LOST, MISSING, RECEIVED, UNKNOWN
@@ -39,6 +39,7 @@
         {writerGUID = #guId{}, readerGUID = #guId{}, final_flag, sn_range, count}).
 -record(reader_proxy,
         {guid,
+         ready= false,
          expectsInlineQos = false,
          unicastLocatorList = [],
          multicastLocatorList = [],

@@ -3,9 +3,9 @@
 -behaviour(gen_server).
 
 -export([start_link/0, get_all_data_writers/1, create_datawriter/2, lookup_datawriter/2,
-         on_data_available/2, dispose_data_writers/1,
-         wait_for_acknoledgements/1]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+         on_data_available/2, dispose_data_writers/1, endpoint_has_been_acknoledged/2]).
+         %wait_for_acknoledgements/1]).%set_publication_subscriber/2,suspend_publications/1,resume_pubblications/1]).
+-export([init/1, handle_call/3, handle_cast/2]).
 
 -include_lib("dds/include/dds_types.hrl").
 -include_lib("dds/include/rtps_structure.hrl").
@@ -42,9 +42,13 @@ dispose_data_writers(Name) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:call(Pid, dispose_data_writers).
 
-wait_for_acknoledgements(Name) ->
+endpoint_has_been_acknoledged(Name, Endpoint) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:call(Pid, wait_for_acknoledgements).
+    gen_server:call(Pid, {endpoint_has_been_acknoledged,Endpoint}).
+
+% wait_for_acknoledgements(Name) ->
+%     [Pid | _] = pg:get_members(Name),
+%     gen_server:call(Pid, wait_for_acknoledgements).
 
 %callbacks
 init([]) ->
@@ -124,26 +128,29 @@ handle_call(get_all_data_writers, _, State) ->
 handle_call({lookup_datawriter, Topic}, _, #state{data_writers = DW} = S) ->
     [W | _] = [Name || {_, T, Name} <- DW, T == Topic],
     {reply, W, S};
-handle_call(dispose_data_writers,
-            _,
-            #state{rtps_participant_info = P_info,
-                   builtin_pub_announcer = Pub_announcer,
-                   data_writers = DW} =
-                S) ->
+handle_call(dispose_data_writers, _,#state{rtps_participant_info = P_info,
+                    builtin_pub_announcer = Pub_announcer, data_writers = DW} = S) ->
     [dds_data_w:write(Pub_announcer, produce_sedp_endpoint_leaving(P_info, ID))
      || {ID, _, _} <- DW],
     dds_data_w:flush_all_changes(Pub_announcer),
     {reply, ok, S};
-handle_call(wait_for_acknoledgements,
-            _,
-            #state{rtps_participant_info = P_info,
-                   builtin_pub_announcer = Pub_announcer,
-                   data_writers = DW} =
-                S) ->
-    [dds_data_w:wait_for_acknoledgements(Pub_announcer) || {ID, _, _} <- DW],
-    {reply, ok, S};
-handle_call(_, _, State) ->
-    {reply, ok, State}.
+handle_call({endpoint_has_been_acknoledged,{data_w_of, WGUID}}, _, #state{builtin_pub_announcer = {data_w_of, PUB_GUID}} = S) ->
+    Changes = rtps_history_cache:get_all_changes({cache_of,PUB_GUID}),
+    [ChangeKey|_] = [ {GUID, SN} || #cacheChange{writerGuid=GUID,sequenceNumber=SN,data=#sedp_disc_endpoint_data{endpointGuid=E}} <- Changes, E == WGUID],
+    {reply, dds_data_w:is_sample_acknowledged({data_w_of, PUB_GUID}, ChangeKey), S};
+handle_call({endpoint_has_been_acknoledged,{data_r_of, RGUID}}, _, #state{builtin_sub_announcer = {data_w_of, SUB_GUID}} = S) ->
+    Changes = rtps_history_cache:get_all_changes({cache_of,SUB_GUID}),
+    %io:format("Subscriptions:\n~p\n",[Changes]),
+    [ChangeKey|_] = [ {GUID, SN} || #cacheChange{writerGuid=GUID,sequenceNumber=SN,data=#sedp_disc_endpoint_data{endpointGuid=E}} <- Changes, E == RGUID],
+    %io:format("Change:\n~p\n",[ChangeKey]),
+    {reply, dds_data_w:is_sample_acknowledged({data_w_of, SUB_GUID}, ChangeKey), S}.
+% handle_call(wait_for_acknoledgements,
+%             _,
+%             #state{rtps_participant_info = P_info,
+%                    builtin_pub_announcer = Pub_announcer,
+%                    data_writers = DW} =
+%                 S) ->
+%     {reply, ok, S};
 
 handle_cast({on_data_available, {R, ChangeKey}}, #state{data_writers = DW} = S) ->
     Change =
@@ -165,12 +172,7 @@ handle_cast({on_data_available, {R, ChangeKey}}, #state{data_writers = DW} = S) 
             Participants = rtps_participant:get_discovered_participants(participant),
             [match_writer_with_reader(Pid, Data, Participants) || Pid <- ToBeMatched]
     end,
-    {noreply, S};
-handle_cast(_, State) ->
-    {noreply, State}.
-
-handle_info(_, State) ->
-    {noreply, State}.
+    {noreply, S}.
 
 % HELPERS
 produce_sedp_disc_enpoint_data(#participant{guid = #guId{prefix = P},

@@ -101,29 +101,40 @@ h_matched_writer_add(Proxy, #state{writer_proxies = WP} = S) ->
 h_matched_writer_remove(Guid, #state{writer_proxies = WP} = S) ->
     S#state{writer_proxies = [P || #writer_proxy{guid = G} = P <- WP, G /= Guid]}.
 
-missing_changes_update(WGUID, C, Min, Max) ->
-    PresentSN = [SN || #change_from_writer{change_key = {_, SN}} <- C],
+missing_changes_update(WGUID, Changes, Min, Max) ->
+    PresentSN = [SN || #change_from_writer{change_key = {_, SN}} <- Changes],
     NewChanges =
         [#change_from_writer{change_key = {WGUID, SN}, status = missing}
          || SN <- lists:seq(Min, Max), not lists:member(SN, PresentSN)],
-    C ++ NewChanges.
+    Changes ++ NewChanges.
 
-lost_change_update(#change_from_writer{change_key = {_, SN}, status = S} = C, FirstSN)
-    when ((S == unknown) or (S == missing)) and SN < FirstSN ->
-    C#change_from_writer{status = lost};
-lost_change_update(#change_from_writer{change_key = {_, _}, status = _} = C, FirstSN) ->
-    C.
+gen_change_if_not_there(WGUID,LastSN,ToBeMarked) ->
+    case lists:member(LastSN, [ SN || #change_from_writer{ change_key = {_, SN}} <- ToBeMarked]) of
+        true -> [];
+        false -> [#change_from_writer{ change_key = {WGUID, LastSN}}]
+    end.
+
+lost_changes_update( WGUID, FirstSN, LastSN, Changes) ->
+    {ToBeMarked, Others} = lists:partition(fun(#change_from_writer{ change_key = {_, SN}, status = S}) -> 
+                                                ((S == unknown) or (S == missing)) and (SN < FirstSN) 
+                                            end,
+                                            Changes),
+    LastLostChange = case LastSN < FirstSN of 
+        true -> gen_change_if_not_there(WGUID,LastSN,ToBeMarked);
+        false -> []
+    end,
+    Others ++ [ C#change_from_writer{ status = lost} || C <- ToBeMarked ++ LastLostChange].
 
 manage_heartbeat_for_writer(#heartbeat{writerGUID = WGUID,
                                        final_flag = FF,
                                        min_sn = Min,
                                        max_sn = Max},
-                            #writer_proxy{changes_from_writer = C} = W,
+                            #writer_proxy{changes_from_writer = Changes} = W,
                             #state{writer_proxies = WP, heartbeatResponseDelay = Delay} = S) ->
     %io:format("~p\n",[WGUID]),
     Others = [P || #writer_proxy{guid = G} = P <- WP, G /= WGUID],
-    NewChangeList = missing_changes_update(WGUID, C, Min, Max),
-    Check2 = lists:map(fun(Elem) -> lost_change_update(Elem, Min) end, NewChangeList),
+    NewChangeList = missing_changes_update(WGUID, Changes, Min, Max),
+    Check2 = lost_changes_update(WGUID, Min, Max, NewChangeList),
     erlang:send_after(Delay, self(), {send_acknack_if_needed, {WGUID, FF}}),
     S#state{writer_proxies = Others ++ [W#writer_proxy{changes_from_writer = Check2}]}.
 

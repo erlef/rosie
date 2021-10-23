@@ -107,32 +107,28 @@ handle_data({Reader, Writer, WriterSN, ?PL_CDR_LE, SerializedPayload}) % SEDP wi
     P_list = rtps_messages:parse_param_list(SerializedPayload),
     EndpointData = pl_to_discovered_endpoint_data(P_list),
     {data, {Reader, Writer, WriterSN, EndpointData}};
-handle_data({QOS_LIST,
-             Reader,
-             Writer,
-             WriterSN,
-             ?PL_CDR_LE,
-             SerializedPayload}) % SEDP with key and QOS
+handle_data({QOS_LIST, Reader, Writer, WriterSN,?PL_CDR_LE, SerializedPayload}) % SEDP with key and QOS
     when (Writer == ?ENTITYID_SEDP_BUILTIN_PUBLICATIONS_ANNOUNCER)
          or (Writer == ?ENTITYID_SEDP_BUILTIN_SUBSCRIPTIONS_ANNOUNCER) ->
     P_list = rtps_messages:parse_param_list(SerializedPayload),
     EndpointData = pl_to_discovered_endpoint_data(P_list ++ QOS_LIST),
     {data, {Reader, Writer, WriterSN, EndpointData}};
-handle_data({QOS_LIST,
-             Reader,
-             Writer,
-             WriterSN,
-             ?PL_CDR_LE,
-             SerializedPayload}) % SPDP with key and QOS
+handle_data({QOS_LIST, Reader, Writer,  WriterSN,  ?PL_CDR_LE, SerializedPayload}) % SPDP with key and QOS
     when Writer == ?ENTITYID_SPDP_BUILTIN_PARTICIPANT_WRITER ->
     P_list = rtps_messages:parse_param_list(SerializedPayload),
     ParticipantData = pl_to_discovered_participant_data(P_list ++ QOS_LIST),
     {data, {Reader, Writer, WriterSN, ParticipantData}};
+handle_data({QOS_LIST, Reader, Writer, WriterSN}) ->
+    io:format("Data msg with only inline_qos not supported by implementaiton... \n"),
+    not_managed;
 % Data is user-defined binary in little endian
 handle_data({Reader, Writer, WriterSN, ?CDR_LE, SerializedPayload}) ->
     {data, {Reader, Writer, WriterSN, SerializedPayload}};
-handle_data(_) ->
-    io:format("Data unknown or rappresentation not supported by implementation.\n"),
+% Inline-QOS for user data are ignored 
+handle_data({_, Reader, Writer, WriterSN, ?CDR_LE, SerializedPayload}) ->
+    {data, {Reader, Writer, WriterSN, SerializedPayload}};
+handle_data(D) ->
+    io:format("Data unknown or rappresentation not supported by implementation: ~p\n",[D]),
     not_managed.
 
 handle_acknack(#state{sourceGuidPrefix = SRC, destGuidPrefix = DST},

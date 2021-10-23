@@ -2,14 +2,14 @@
 
 -behaviour(gen_server).
 
--export([start_link/1, write/2, get_matched_subscriptions/1, remote_reader_add/2,
+-export([start_link/1, write/2, get_matched_subscriptions/1, remote_reader_add/2, is_sample_acknowledged/2,
          remote_reader_remove/2, match_remote_readers/2, wait_for_acknoledgements/1,
          flush_all_changes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 
--record(state, {topic, rtps_writer, matched_data_readers = [], history_cache}).
+-record(state, {topic, rtps_writer, history_cache}).
 
 start_link(Setup) ->
     gen_server:start_link(?MODULE, Setup, []).
@@ -34,6 +34,10 @@ write(Name, MSG) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {write, MSG}).
 
+is_sample_acknowledged(Name, ChangeKey) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {is_sample_acknowledged, ChangeKey}).
+
 wait_for_acknoledgements(Name) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:call(Pid, wait_for_acknoledgements).
@@ -53,9 +57,14 @@ init({Topic, #participant{guid = ID}, GUID}) ->
             rtps_writer = GUID,
             history_cache = {cache_of, GUID}}}.
 
-handle_call(get_matched_subscriptions, _, #state{matched_data_readers = Matched} = S) ->
+handle_call(get_matched_subscriptions, _, #state{rtps_writer = W} = S) ->
+    Matched = [ P#reader_proxy.guid || #reader_proxy{ready=Ready}=P <- rtps_full_writer:get_matched_readers(W), Ready],
     {reply, Matched, S};
+handle_call({is_sample_acknowledged, ChangeKey}, _, #state{rtps_writer = W} = S) ->
+    {reply, rtps_full_writer:is_acked_by_all(W,ChangeKey), S};
 handle_call(wait_for_acknoledgements, _, #state{rtps_writer = W} = S) ->
+    % not implemented
+    io:format("DDS_DATA_W: wait_for_acknoledgements Not implemented\n"),
     {reply, ok, S};
 handle_call(flush_all_changes, _, #state{rtps_writer = W} = S) ->
     rtps_full_writer:flush_all_changes(W),
@@ -65,15 +74,13 @@ handle_call(_, _, State) ->
 
 handle_cast({match_remote_readers, R}, #state{rtps_writer = W} = S) ->
     rtps_full_writer:update_matched_readers(W, R),
-    {noreply, S#state{matched_data_readers = [G || #reader_proxy{guid = G} <- R]}};
-handle_cast({remote_reader_add, R},
-            #state{matched_data_readers = DR, rtps_writer = W} = S) ->
+    {noreply, S};
+handle_cast({remote_reader_add, R}, #state{rtps_writer = W} = S) ->
     rtps_full_writer:matched_reader_add(W, R),
-    {noreply, S#state{matched_data_readers = [R#reader_proxy.guid | DR]}};
-handle_cast({remote_reader_remove, Reader},
-            #state{matched_data_readers = DR, rtps_writer = W} = S) ->
+    {noreply, S};
+handle_cast({remote_reader_remove, Reader}, #state{ rtps_writer = W} = S) ->
     rtps_full_writer:matched_reader_remove(W, Reader),
-    {noreply, S#state{matched_data_readers = [R || R <- DR, R /= Reader]}};
+    {noreply, S};
 handle_cast({write, Msg}, #state{history_cache = Cache, rtps_writer = W} = S) ->
     %io:format("Writing: ~p\n",[Msg]),
     Change = rtps_full_writer:new_change(W, Msg),
