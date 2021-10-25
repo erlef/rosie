@@ -69,8 +69,11 @@ init(Name) ->
                                 "ros_discovery_info",
                                 Qos_profile,
                                 {?MODULE, {ros_node, Name}}]),
-    %{ok, _} = supervisor:start_child(ros_publishers_sup, [participant_entities_info_msg,Qos_profile,"ros_discovery_info"]),
-    %update_ros_discovery(Name),
+    {ok, _} = supervisor:start_child(ros_publishers_sup, [
+        rmw_dds_common_participant_entities_info_msg,
+        Qos_profile,
+        "ros_discovery_info"]),
+    update_ros_discovery(Name),
     {ok,
      #state{name = Name,
             discovery_pub = {ros_publisher, "ros_discovery_info"},
@@ -143,41 +146,41 @@ update_ros_discovery(NodeName) ->
 h_create_subscription(MsgModule, TopicName, CallbackHandler, #state{name = Name}) ->
     {ok, _} =
         supervisor:start_child(ros_subscriptions_sup, [MsgModule, TopicName, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_subscription, TopicName}.
 
 h_create_publisher(MsgModule, TopicName, #state{name = Name}) ->
     {ok, _} = supervisor:start_child(ros_publishers_sup, [MsgModule, TopicName]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_publisher, TopicName}.
 
 h_create_publisher_qos(MsgModule, TopicName, QoS, #state{name = Name}) ->
     {ok, _} = supervisor:start_child(ros_publishers_sup, [MsgModule, QoS, TopicName]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_publisher, TopicName}.
 
 h_create_client({Service, Prefix}, CallbackHandler, #state{name = Name}) ->
     {ok, _} =
         supervisor:start_child(ros_clients_sup,
                                [{ros_node, Name}, {Service, Prefix}, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_client, Service};
 h_create_client(Service, CallbackHandler, #state{name = Name}) ->
     {ok, _} =
         supervisor:start_child(ros_clients_sup, [{ros_node, Name}, Service, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_client, Service}.
 
 h_create_service({Service, Prefix}, CallbackHandler, #state{name = Name}) ->
     {ok, _} =
         supervisor:start_child(ros_services_sup,
                                [{ros_node, Name}, {Service, Prefix}, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_service, Service};
 h_create_service(Service, CallbackHandler, #state{name = Name}) ->
     {ok, _} =
         supervisor:start_child(ros_services_sup, [{ros_node, Name}, Service, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_service, Service}.
 
 h_create_service_qos({Service, Prefix},
@@ -187,11 +190,11 @@ h_create_service_qos({Service, Prefix},
     {ok, _} =
         supervisor:start_child(ros_services_sup,
                                [{ros_node, Name}, {Service, Prefix}, QoSProfile, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_service, Service};
 h_create_service_qos(Service, QoSProfile, CallbackHandler, #state{name = Name}) ->
     {ok, _} =
         supervisor:start_child(ros_services_sup,
                                [{ros_node, Name}, Service, QoSProfile, CallbackHandler]),
-    %update_ros_discovery(Name),
+    update_ros_discovery(Name),
     {ros_service, Service}.
