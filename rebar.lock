@@ -2,6 +2,7 @@
  {<<"builtin_interfaces">>,{ros2,galactic},1},
  {<<"example_interfaces">>,{ros2,galactic},0},
  {<<"geometry_msgs">>,{ros2,galactic},0},
+ {<<"rcl_interfaces">>,{ros2,galactic},0},
  {<<"rcpputils">>,{ros2,galactic},1},
  {<<"rcutils">>,{ros2,galactic},1},
  {<<"rmw">>,{ros2,galactic},1},

@@ -7,17 +7,38 @@
 
 -export([on_topic_msg/2]).
 
+
+-behaviour(gen_service_listener).
+-export([on_client_request/2]).
+
 -behaviour(gen_server).
 
 -export([init/1, handle_call/3, handle_cast/2]).
 
 -include_lib("rmw_dds_common/src/_rosie/rmw_dds_common_participant_entities_info_msg.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_list_parameters_srv.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_get_parameter_types_srv.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_get_parameters_srv.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_set_parameters_srv.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_set_parameters_atomically_srv.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_parameter_type_msg.hrl").
+-include_lib("rcl_interfaces/src/_rosie/rcl_interfaces_describe_parameters_srv.hrl").
+
 -include_lib("dds/include/dds_types.hrl").
 -include_lib("dds/include/rtps_structure.hrl").
 
 % -include_lib("dds/include/rtps_constants.hrl").
 
--record(state, {name, discovery_pub, discovery_sub}).
+-record(state, {
+    name, 
+    discovery_pub, 
+    discovery_sub, 
+    parameters = #{ 
+        "use_sim_time" => {
+            #rcl_interfaces_parameter_descriptor{name="use_sim_time",type=?PARAMETER_BOOL},
+            #rcl_interfaces_parameter_value{type=?PARAMETER_BOOL,bool_value=false}
+        }}
+}).
 
 start_link(Name) ->
     gen_server:start_link(?MODULE, Name, []).
@@ -54,11 +75,17 @@ on_topic_msg(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {on_topic_msg, Msg}).
 
+on_client_request(Name, Msg) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {on_client_request, Msg}).
+
+
 %callbacks
 %
-init(Name) ->
+init(NodeName) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
-    pg:join({ros_node, Name}, self()),
+    NodeID = {ros_node, NodeName},
+    pg:join(NodeID, self()),
     Qos_profile =
         #qos_profile{durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
                      history = {?KEEP_ALL_HISTORY_QOS, -1}},
@@ -68,14 +95,17 @@ init(Name) ->
                                [rmw_dds_common_participant_entities_info_msg,
                                 "ros_discovery_info",
                                 Qos_profile,
-                                {?MODULE, {ros_node, Name}}]),
+                                {?MODULE, NodeID}]),
     {ok, _} = supervisor:start_child(ros_publishers_sup, [
-        rmw_dds_common_participant_entities_info_msg,
-        Qos_profile,
-        "ros_discovery_info"]),
-    update_ros_discovery(Name),
+                                    rmw_dds_common_participant_entities_info_msg,
+                                    Qos_profile,
+                                    "ros_discovery_info"]),
+
+    start_up_default_ros2_topics_and_services(NodeID),
+
+    update_ros_discovery(NodeName),
     {ok,
-     #state{name = Name,
+     #state{name = NodeName,
             discovery_pub = {ros_publisher, "ros_discovery_info"},
             discovery_sub = {ros_subscription, "ros_discovery_info"}}}.
 
@@ -95,13 +125,12 @@ handle_call({create_service, Service, QoSProfile, CallbackHandler}, _, S) ->
     {reply, h_create_service_qos(Service, QoSProfile, CallbackHandler, S), S};
 handle_call(get_name, _, #state{name = N} = S) ->
     {reply, N, S};
-handle_call(_, _, S) ->
-    {reply, ok, S}.
+handle_call({on_client_request, {_ , Msg}}, _, S) ->
+    io:format("ROS_NODE: REQUEST ~p\n",[Msg]),
+    {reply, h_parameter_request(Msg,S), S}.
 
 handle_cast({on_topic_msg, Msg}, S) ->
-    %io:format("ROS_DISCOVERY: ~p\n",[Msg]),
-    {noreply, S};
-handle_cast(_, S) ->
+    %io:format("ROS_NODE: TOPIC ~p\n",[Msg]),
     {noreply, S}.
 
 % HELPERS
@@ -198,3 +227,95 @@ h_create_service_qos(Service, QoSProfile, CallbackHandler, #state{name = Name}) 
                                [{ros_node, Name}, Service, QoSProfile, CallbackHandler]),
     update_ros_discovery(Name),
     {ros_service, Service}.
+
+
+
+start_up_default_ros2_topics_and_services({ros_node,NodeName}=NodeID) ->
+    Qos_profile = #qos_profile{ history = {?KEEP_ALL_HISTORY_QOS, -1}},
+    % Topics
+    {ok, _} =
+        supervisor:start_child(ros_publishers_sup,
+                                [rcl_interfaces_parameter_event_msg,
+                                Qos_profile,                                
+                                put_topic_prefix("parameter_events")]),
+    {ok, _} =
+        supervisor:start_child(ros_publishers_sup,
+                                [rcl_interfaces_log_msg,
+                                Qos_profile,                                
+                                put_topic_prefix("rosout")]),
+    % ROS_PARAMETERS -> Service Servers
+    {ok, _} =
+        supervisor:start_child(ros_services_sup,
+                               [NodeID, 
+                               {rcl_interfaces_describe_parameters_srv, NodeName++"/"}, 
+                               Qos_profile, 
+                               {?MODULE, NodeID}]),
+    {ok, _} =
+        supervisor:start_child(ros_services_sup,
+                               [NodeID, 
+                               {rcl_interfaces_get_parameter_types_srv, NodeName++"/"}, 
+                               Qos_profile, 
+                               {?MODULE, NodeID}]),
+    {ok, _} =
+        supervisor:start_child(ros_services_sup,
+                               [NodeID, 
+                               {rcl_interfaces_get_parameters_srv, NodeName++"/"}, 
+                               Qos_profile, 
+                               {?MODULE, NodeID}]),
+    {ok, _} =
+        supervisor:start_child(ros_services_sup,
+                               [NodeID, 
+                               {rcl_interfaces_list_parameters_srv, NodeName++"/"}, 
+                               Qos_profile, 
+                               {?MODULE, NodeID}]),
+    {ok, _} =
+        supervisor:start_child(ros_services_sup,
+                               [NodeID, 
+                               {rcl_interfaces_set_parameters_srv, NodeName++"/"}, 
+                               Qos_profile, 
+                               {?MODULE, NodeID}]),
+    {ok, _} =
+        supervisor:start_child(ros_services_sup,
+                               [NodeID, 
+                               {rcl_interfaces_set_parameters_atomically_srv, NodeName++"/"}, 
+                               Qos_profile, 
+                               {?MODULE, NodeID}]),
+    ok.
+
+get_parameters(Names,Map) ->
+    [ maps:get(binary_to_list(N), Map, { 
+        #rcl_interfaces_parameter_descriptor{name=binary_to_list(N),type=?PARAMETER_NOT_SET},
+        #rcl_interfaces_parameter_value{type=?PARAMETER_NOT_SET}
+    }) || N <- Names].
+
+
+h_parameter_request(#rcl_interfaces_set_parameters_rq{parameters=Params},#state{parameters=P}) ->
+    %io:format("~p\n",[[ D || {D,_} <- get_parameters(Names,P)]]),
+    #rcl_interfaces_set_parameters_rp{
+        results= [ #rcl_interfaces_set_parameters_result{successful=false} || _ <- Params]
+    };
+h_parameter_request(#rcl_interfaces_set_parameters_atomically_rq{parameters=Params},#state{parameters=P}) ->
+    %io:format("~p\n",[[ D || {D,_} <- get_parameters(Names,P)]]),
+    #rcl_interfaces_set_parameters_atomically_rp{
+        result= #rcl_interfaces_set_parameters_result{successful=false}
+    };
+h_parameter_request(#rcl_interfaces_describe_parameters_rq{names=Names},#state{parameters=P}) ->
+    %io:format("~p\n",[[ D || {D,_} <- get_parameters(Names,P)]]),
+    #rcl_interfaces_describe_parameters_rp{
+        descriptors= [ D || {D,_} <- get_parameters(Names,P)]
+    };
+h_parameter_request(#rcl_interfaces_list_parameters_rq{prefixes=Prefs,depth=D},#state{parameters=P}) ->
+    #rcl_interfaces_list_parameters_rp{
+        result=#rcl_interfaces_list_parameters_result{
+                names=maps:keys(P)
+            }
+    };
+h_parameter_request(#rcl_interfaces_get_parameter_types_rq{names=Names},#state{parameters=P}) ->
+    Parameters = get_parameters(Names,P),
+    #rcl_interfaces_get_parameter_types_rp{
+        types=[ T || {_,#rcl_interfaces_parameter_value{type=T}} <- Parameters]
+    };
+h_parameter_request(#rcl_interfaces_get_parameters_rq{names=Names},#state{parameters=P}) ->
+    #rcl_interfaces_get_parameters_rp{
+        values=[ Value || {_,Value} <- get_parameters(Names,P)]
+    }.
