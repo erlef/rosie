@@ -188,7 +188,9 @@ s_code_to_str(?STATUS_SUCCEEDED) ->
 s_code_to_str(?STATUS_CANCELED) ->
     "STATUS_CANCELED";
 s_code_to_str(?STATUS_ABORTED) ->
-    "STATUS_ABORTED".
+    "STATUS_ABORTED";
+s_code_to_str(UNKNOWN) ->
+    integer_to_list(UNKNOWN).
 
 h_handle_status_update(GoalStatusArrayMsg, S) ->
     io:format("[ROS_ACTION_CLIENT]: received goal states update: \n"),

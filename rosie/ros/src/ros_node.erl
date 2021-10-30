@@ -90,12 +90,11 @@ init(NodeName) ->
         #qos_profile{durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
                      history = {?KEEP_ALL_HISTORY_QOS, -1}},
 
-    {ok, _} =
-        supervisor:start_child(ros_subscriptions_sup,
+    {ok, _} = supervisor:start_child(ros_subscriptions_sup,
                                [rmw_dds_common_participant_entities_info_msg,
                                 "ros_discovery_info",
                                 Qos_profile,
-                                {?MODULE, NodeID}]),
+                                 {?MODULE, NodeID}]),
     {ok, _} = supervisor:start_child(ros_publishers_sup, [
                                     rmw_dds_common_participant_entities_info_msg,
                                     Qos_profile,
@@ -127,7 +126,8 @@ handle_call(get_name, _, #state{name = N} = S) ->
     {reply, N, S};
 handle_call({on_client_request, {_ , Msg}}, _, S) ->
     io:format("ROS_NODE: REQUEST ~p\n",[Msg]),
-    {reply, h_parameter_request(Msg,S), S}.
+    {Result, NewState} = h_parameter_request(Msg,S),
+    {reply, Result, NewState}.
 
 handle_cast({on_topic_msg, Msg}, S) ->
     %io:format("ROS_NODE: TOPIC ~p\n",[Msg]),
@@ -283,39 +283,57 @@ start_up_default_ros2_topics_and_services({ros_node,NodeName}=NodeID) ->
     ok.
 
 get_parameters(Names,Map) ->
-    [ maps:get(binary_to_list(N), Map, { 
-        #rcl_interfaces_parameter_descriptor{name=binary_to_list(N),type=?PARAMETER_NOT_SET},
+    [ maps:get(N, Map, { 
+        #rcl_interfaces_parameter_descriptor{name=N,type=?PARAMETER_NOT_SET},
         #rcl_interfaces_parameter_value{type=?PARAMETER_NOT_SET}
     }) || N <- Names].
 
+mark_set_rq({Key, NEWV}, Map) -> 
+    case get_parameters([Key],Map) of
+        [{D,V}] when 
+                (V#rcl_interfaces_parameter_value.type /= ?PARAMETER_NOT_SET) and
+                (NEWV#rcl_interfaces_parameter_value.type /= ?PARAMETER_NOT_SET) and
+                (V#rcl_interfaces_parameter_value.type == NEWV#rcl_interfaces_parameter_value.type) -> {true, {Key, NEWV}};
+        _  -> {false, "type mismatch or param \""++Key++"\" undefined"}
+    end.
 
-h_parameter_request(#rcl_interfaces_set_parameters_rq{parameters=Params},#state{parameters=P}) ->
+put_new_vals_for_params([], Map) ->
+    Map;
+put_new_vals_for_params([{Key, NEWV}| TL], Map) ->
+    {D,_} = maps:get(Key, Map),
+    put_new_vals_for_params(TL, Map#{Key => {D, NEWV}}).
+
+h_parameter_request(#rcl_interfaces_set_parameters_rq{parameters=Params},#state{parameters=P}=S) ->    
+    K_NEWV = [ { N, V} || #rcl_interfaces_parameter{name=N,value=V} <- Params],
+    MarkedRequests = lists:map(fun({N, V}) -> mark_set_rq({N, V},P) end, K_NEWV),
+    LegalRequests = [ DATA || {R, DATA} <- MarkedRequests, R ],
+    NewParamMap = put_new_vals_for_params(LegalRequests,P),
+    {#rcl_interfaces_set_parameters_rp{
+        results= [ #rcl_interfaces_set_parameters_result{successful=R, reason= case R of false -> Reason; _ -> "" end} 
+                    || {R,Reason} <- MarkedRequests]
+    }, S#state{parameters=NewParamMap}};
+h_parameter_request(#rcl_interfaces_set_parameters_atomically_rq{parameters=Params},#state{parameters=P}=S) ->
     %io:format("~p\n",[[ D || {D,_} <- get_parameters(Names,P)]]),
-    #rcl_interfaces_set_parameters_rp{
-        results= [ #rcl_interfaces_set_parameters_result{successful=false} || _ <- Params]
-    };
-h_parameter_request(#rcl_interfaces_set_parameters_atomically_rq{parameters=Params},#state{parameters=P}) ->
+    {#rcl_interfaces_set_parameters_atomically_rp{
+        result= #rcl_interfaces_set_parameters_result{successful=false,reason="Not implemented by ROSIE node"}
+    },S};
+h_parameter_request(#rcl_interfaces_describe_parameters_rq{names=Names},#state{parameters=P}=S) ->
     %io:format("~p\n",[[ D || {D,_} <- get_parameters(Names,P)]]),
-    #rcl_interfaces_set_parameters_atomically_rp{
-        result= #rcl_interfaces_set_parameters_result{successful=false}
-    };
-h_parameter_request(#rcl_interfaces_describe_parameters_rq{names=Names},#state{parameters=P}) ->
-    %io:format("~p\n",[[ D || {D,_} <- get_parameters(Names,P)]]),
-    #rcl_interfaces_describe_parameters_rp{
+    {#rcl_interfaces_describe_parameters_rp{
         descriptors= [ D || {D,_} <- get_parameters(Names,P)]
-    };
-h_parameter_request(#rcl_interfaces_list_parameters_rq{prefixes=Prefs,depth=D},#state{parameters=P}) ->
-    #rcl_interfaces_list_parameters_rp{
+    },S};
+h_parameter_request(#rcl_interfaces_list_parameters_rq{prefixes=Prefs,depth=D},#state{parameters=P}=S) ->
+    {#rcl_interfaces_list_parameters_rp{
         result=#rcl_interfaces_list_parameters_result{
                 names=maps:keys(P)
             }
-    };
-h_parameter_request(#rcl_interfaces_get_parameter_types_rq{names=Names},#state{parameters=P}) ->
+    },S};
+h_parameter_request(#rcl_interfaces_get_parameter_types_rq{names=Names},#state{parameters=P}=S) ->
     Parameters = get_parameters(Names,P),
-    #rcl_interfaces_get_parameter_types_rp{
+    {#rcl_interfaces_get_parameter_types_rp{
         types=[ T || {_,#rcl_interfaces_parameter_value{type=T}} <- Parameters]
-    };
-h_parameter_request(#rcl_interfaces_get_parameters_rq{names=Names},#state{parameters=P}) ->
-    #rcl_interfaces_get_parameters_rp{
+    },S};
+h_parameter_request(#rcl_interfaces_get_parameters_rq{names=Names},#state{parameters=P}=S) ->
+    {#rcl_interfaces_get_parameters_rp{
         values=[ Value || {_,Value} <- get_parameters(Names,P)]
-    }.
+    },S}.
