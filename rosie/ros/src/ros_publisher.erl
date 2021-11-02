@@ -1,26 +1,48 @@
 -module(ros_publisher).
-
--export([start_link/3, start_link/2, publish/2]).
--export([init/1, handle_call/3, handle_cast/2]).
+-export([start_link/4, start_link/3, publish/2]).
 
 -behaviour(gen_server).
+-export([init/1, handle_call/3, handle_cast/2]).
+
+-behaviour(gen_dds_entity_owner).
+-export([get_all_dds_entities/1]).
 
 -include_lib("dds/include/dds_types.hrl").
 
 -record(state,
-        {msg_module, topic_name, qos_profile = #qos_profile{}, dds_topic, dds_data_writer}).
+        {msg_module, 
+        node, 
+        topic, 
+        dds_data_writer}).
 
-start_link(MsgModule, QoSProfile, TopicName) ->
+start_link(MsgModule, Node, TopicName, QoSProfile) ->
     gen_server:start_link(?MODULE,
                           #state{msg_module = MsgModule,
-                                 qos_profile = QoSProfile,
-                                 topic_name = TopicName},
+                                node = Node, 
+                                 topic= #dds_user_topic{name = TopicName,
+                                                type_name = MsgModule:get_type(),
+                                                qos_profile = QoSProfile}},
                           []).
 
-start_link(MsgModule, TopicName) ->
+start_link(raw, Node, Topic) ->
     gen_server:start_link(?MODULE,
-                          #state{msg_module = MsgModule, topic_name = TopicName},
+                          #state{
+                            msg_module = raw, 
+                            node = Node, 
+                            topic = Topic},
+                          []);
+start_link(MsgModule, Node, TopicName) ->
+    gen_server:start_link(?MODULE,
+                          #state{
+                            msg_module = MsgModule, 
+                            node = Node, 
+                            topic = #dds_user_topic{name = TopicName,
+                                                type_name = MsgModule:get_type()}},
                           []).
+
+get_all_dds_entities(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, get_all_dds_entities).
 
 publish(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
@@ -28,21 +50,15 @@ publish(Name, Msg) ->
 
 %callbacks
 %
-init(#state{msg_module = MsgModule,
-            topic_name = TopicName,
-            qos_profile = QoSProfile} =
-         S) ->
-    pg:join({?MODULE, TopicName}, self()),
+init(#state{ node = Node, 
+            topic = #dds_user_topic{name= TopicName}=Topic} = S) ->
+    pg:join({?MODULE, Node, TopicName}, self()),
     Pub = dds_domain_participant:get_default_publisher(dds),
-    DDS_Topic =
-        #user_topic{type_name = MsgModule:get_type(),
-                    name = TopicName,
-                    qos_profile = QoSProfile},
-    DW = dds_publisher:create_datawriter(Pub, DDS_Topic),
-    {ok, S#state{dds_topic = DDS_Topic, dds_data_writer = DW}}.
+    DW = dds_publisher:create_datawriter(Pub, Topic),
+    {ok, S#state{dds_data_writer = DW}}.
 
-handle_call(_, _, S) ->
-    {reply, ok, S}.
+handle_call(get_all_dds_entities, _, #state{dds_data_writer= DW}=S) ->
+    {reply, {[DW],[]}, S}.
 
 handle_cast({publish, Msg}, S) ->
     h_publish(Msg, S),
@@ -52,17 +68,8 @@ handle_cast(_, S) ->
 
 % HELPERS
 %
+h_publish(BinaryMsg, #state{msg_module = raw, dds_data_writer = DW}) ->
+    dds_data_w:write(DW, BinaryMsg);
 h_publish(Msg, #state{msg_module = MsgModule, dds_data_writer = DW}) ->
     Serialized = MsgModule:serialize(Msg),%serialize_ros_msg(Msg,T) ,
     dds_data_w:write(DW, Serialized).
-
-% serialize_ros_msg(Msg,#user_topic{type_name = ?msg_string_topic_type}) -> serialize_string(Msg);
-% serialize_ros_msg(Msg,#user_topic{type_name = ?msg_twist_topic_type}) -> serialize_twist(Msg).
-
-% serialize_twist(#twist{linear=#vector3{x=LX,y=LY,z=LZ},
-%                         angular=#vector3{x=AX,y=AY,z=AZ}}) ->
-%         <<LX/float-little,LY/float-little,LZ/float-little,
-%                 AX/float-little,AY/float-little,AZ/float-little>>.
-% serialize_string(S) ->
-%         L = length(S),
-%         <<(L+1):32/little,(list_to_binary(S))/binary,0>>.

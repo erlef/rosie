@@ -1,0 +1,15 @@
+{application, parameters,
+ [{description, "Examples of the parameter API"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {parameters_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

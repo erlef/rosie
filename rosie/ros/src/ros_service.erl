@@ -1,10 +1,14 @@
 -module(ros_service).
-
--export([start_link/4, start_link/3, send_response/2, on_data_available/2]).
--export([init/1, handle_call/3, handle_cast/2]).
+-export([start_link/4, start_link/3, send_response/2]).
 
 -behaviour(gen_server).
--behaviour(gen_data_reader_listener).
+-export([init/1, handle_call/3, handle_cast/2]).
+
+-behaviour(gen_subscription_listener).
+-export([on_topic_msg/2]).
+
+-behaviour(gen_dds_entity_owner).
+-export([get_all_dds_entities/1]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/dds_types.hrl").
@@ -15,8 +19,8 @@
          name_prefx = "",
          user_process,
          qos_profile = #qos_profile{},
-         dds_data_writer,
-         dds_data_reader}).
+         request_subscription,
+         responce_publication}).
 
 start_link(Node, {Service, NamePrefix}, CustomQoSProfile, {Module, Pid}) ->
     gen_server:start_link(?MODULE,
@@ -53,62 +57,66 @@ send_response(Name, Response) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {send_response, Response}).
 
-on_data_available(Name, {Reader, ChangeKey}) ->
+get_all_dds_entities(Name) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:cast(Pid, {on_data_available, {Reader, ChangeKey}}).
+    gen_server:call(Pid, get_all_dds_entities).
+
+on_topic_msg(Name, BinaryMsg) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:cast(Pid, {on_topic_msg, BinaryMsg}).
 
 %callbacks
 %
-init(#state{service_interface = Service,
+init(#state{node = Node,
+            service_interface = Service,
             qos_profile = QoSProfile,
             name_prefx = NP} =
          S) ->
-    pg:join({?MODULE, Service}, self()),
+    ServiceName = {?MODULE, Node, Service},
+    pg:join(ServiceName, self()),
 
     % A Service listens to the request topic
-    SpawnRequest_name = "rq/" ++ NP ++ Service:get_name() ++ "Request",
-    SpawnRequest_type = Service:get_type() ++ "Request_",
-    SpawnRequest =
-        #user_topic{name = SpawnRequest_name,
-                    type_name = SpawnRequest_type,
+    Request_name = "rq/" ++ NP ++ Service:get_name() ++ "Request",
+    Request_type = Service:get_type() ++ "Request_",
+    Request = #dds_user_topic{name = Request_name,
+                    type_name = Request_type,
                     qos_profile = QoSProfile},
 
-    SUB = dds_domain_participant:get_default_subscriber(dds),
-    DR = dds_subscriber:create_datareader(SUB, SpawnRequest),
-    dds_data_r:set_listener(DR, {{?MODULE, Service}, ?MODULE}),
+    {ok, _} = supervisor:start_child(ros_subscriptions_sup, [raw, Node, Request, {?MODULE, ServiceName}]),
+    RS_id = {ros_subscription, Node, Request_name},
 
     % And publishes to the reply topic
-    SpawnReply_name = "rr/" ++ NP ++ Service:get_name() ++ "Reply",
-    SpawnReply_type = Service:get_type() ++ "Response_",
-    SpawnReply =
-        #user_topic{name = SpawnReply_name,
-                    type_name = SpawnReply_type,
+    Reply_name = "rr/" ++ NP ++ Service:get_name() ++ "Reply",
+    Reply_type = Service:get_type() ++ "Response_",
+    Reply = #dds_user_topic{name = Reply_name,
+                    type_name = Reply_type,
                     qos_profile = QoSProfile},
 
-    Pub = dds_domain_participant:get_default_publisher(dds),
-    DW = dds_publisher:create_datawriter(Pub, SpawnReply),
+    {ok, _} = supervisor:start_child(ros_publishers_sup, [raw, Node, Reply]),
+    RP_id = {ros_publisher, Node, Reply_name},
+    {ok, S#state{
+        request_subscription = RS_id,
+        responce_publication = RP_id}}.
 
-    {ok, S#state{dds_data_writer = DW, dds_data_reader = DR}}.
-
-handle_call(_, _, S) ->
-    {reply, ok, S}.
+handle_call(get_all_dds_entities, _, #state{request_subscription = RS, responce_publication = RP}=S) ->
+    {[DW],_} = ros_publisher:get_all_dds_entities(RP),
+    {_,[DR]} = ros_subscription:get_all_dds_entities(RS),
+    {reply, {[DW],[DR]}, S}.
 
 handle_cast({send_response, {Client_ID, RequestNumber, Response}},
-            #state{dds_data_writer = DW, service_interface = Service} = S) ->
+            #state{responce_publication = RP, service_interface = Service} = S) ->
     Serialized = Service:serialize_reply(Client_ID, RequestNumber, Response),
-    dds_data_w:write(DW, Serialized),
+    ros_publisher:publish(RP, Serialized),
     {noreply, S};
-handle_cast({on_data_available, {Reader, ChangeKey}},
-            #state{user_process = {M, Pid}, service_interface = Service} = S) ->
-    Change = dds_data_r:read(Reader, ChangeKey),
-    SerializedPayload = Change#cacheChange.data,
-    {Client_ID, RequestNumber, Request} = Service:parse_request(SerializedPayload),
+handle_cast({on_topic_msg, Binary},
+            #state{node = Node, user_process = {M, Pid}, service_interface = Service} = S) ->
+    {Client_ID, RequestNumber, Request} = Service:parse_request(Binary),
     Response = M:on_client_request(Pid, {{Client_ID, RequestNumber}, Request}),
     case Response of
         ros_service_noreply ->
             ok;
         _ ->
-            ros_service:send_response({?MODULE, Service}, {Client_ID, RequestNumber, Response})
+            ros_service:send_response({?MODULE, Node, Service}, {Client_ID, RequestNumber, Response})
     end,
     {noreply, S};
 handle_cast(_, S) ->

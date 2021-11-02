@@ -56,7 +56,7 @@ handle_call({get_change, WriterGuid, SequenceNumber}, _, State) ->
     {reply, h_get_change(State, WriterGuid, SequenceNumber), State};
 handle_call({add_change, Change}, _, #state{listener = L} = S) when L == undefined ->
     {reply, ok, h_add_change(S, Change)};
-handle_call({add_change, Change}, _, #state{listener = {ID, Module}} = S) ->
+handle_call({add_change, Change}, _, #state{listener = {Module, ID}} = S) ->
     Module:on_change_available(ID,
                                {Change#cacheChange.writerGuid, Change#cacheChange.sequenceNumber}),
     {reply, ok, h_add_change(S, Change)};
@@ -85,7 +85,7 @@ h_get_change(#state{cache = C}, WriterGuid, SequenceNumber) ->
             not_found
     end.
 
-h_remove_change(#state{cache = C, listener = {ID, Module}} = State,
+h_remove_change(#state{cache = C, listener = {Module, ID}} = State,
                 WriterGuid,
                 SequenceNumber) ->
     Module:on_change_removed(ID, {WriterGuid, SequenceNumber}),

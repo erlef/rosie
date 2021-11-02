@@ -64,14 +64,14 @@ init(#state{node = Node,
             action_interface = Action,
             callback_handler = CallbackHandler} =
          S) ->
-    Name = {?MODULE, Action},
-    pg:join(Name, self()),
+    ServerName = {?MODULE, Node, Action},
+    pg:join(ServerName, self()),
 
     %customized by the user
     RequestGoalService =
-        ros_node:create_service(Node, Action:get_goal_srv_module(), {?MODULE, Name}),
+        ros_node:create_service(Node, Action:get_goal_srv_module(), {?MODULE, ServerName}),
     GetResultService =
-        ros_node:create_service(Node, Action:get_result_srv_module(), {?MODULE, Name}),
+        ros_node:create_service(Node, Action:get_result_srv_module(), {?MODULE, ServerName}),
     FeedbackPub =
         ros_node:create_publisher(Node,
                                   Action:get_feedback_msg_module(),
@@ -81,7 +81,7 @@ init(#state{node = Node,
     CancelGoalService =
         ros_node:create_service(Node,
                                 {action_msgs_cancel_goal_srv, Action:get_action_name() ++ "/_action/"},
-                                {?MODULE, Name}),
+                                {?MODULE, ServerName}),
     % status topic cannot be left with volatile durability
     StatusTopicsProfile = #qos_profile{durability = ?TRANSIENT_LOCAL_DURABILITY_QOS},
     StatusPub =

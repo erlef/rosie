@@ -1,4 +1,4 @@
--module(ros_nodes_pool_sup).
+-module(parameters_sup).
 
 -behaviour(supervisor).
 
@@ -21,18 +21,19 @@ start_link() ->
 %%                  modules => modules()}   % optional
 
 init([]) ->
-    %io:format("~p.erl STARTED!\n",[?MODULE]),
     SupFlags =
-        #{strategy => simple_one_for_one,
+        #{strategy => one_for_all,
           intensity => 0,
           period => 1},
-    Node =
-        [#{id => ros_node_sup,
-           start => {ros_node_sup, start_link, []},
-           restart => permanent,
-           shutdown => 5000,
-           type => supervisor}],
+    Params =
+        #{id => parameters,
+          start => {parameters, start_link, []},
+          restart => transient,
+          shutdown => 5000,
+          type => worker},
 
-    {ok, {SupFlags, Node}}.
+    ChildSpecs = [Params],
+
+    {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions

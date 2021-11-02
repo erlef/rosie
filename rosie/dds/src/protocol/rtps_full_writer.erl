@@ -95,7 +95,7 @@ init({Participant, #endPoint{guid = GUID} = WriterConfig}) ->
         #state{participant = Participant,
                entity = WriterConfig,
                history_cache = {cache_of, GUID}},
-    rtps_history_cache:set_listener({cache_of, GUID}, {GUID, ?MODULE}),
+    rtps_history_cache:set_listener({cache_of, GUID}, {?MODULE, GUID}),
 
     erlang:send_after(10, self(), heartbeat_loop),
     erlang:send_after(10, self(), write_loop),

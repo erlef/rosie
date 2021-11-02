@@ -61,7 +61,7 @@ init({Participant, #endPoint{guid = GUID} = WriterConfig}) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
     pg:join(GUID, self()),
     Cache = {cache_of, GUID},
-    rtps_history_cache:set_listener(Cache, {GUID, ?MODULE}),
+    rtps_history_cache:set_listener(Cache, {?MODULE, GUID}),
     erlang:send_after(1000, self(), writer_loop),
     {ok,
      #state{participant = Participant,

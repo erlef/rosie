@@ -3,11 +3,9 @@
 -export([start_link/0]).
 
 -behaviour(gen_subscription_listener).
-
 -export([on_topic_msg/2]).
 
 -behaviour(gen_server).
-
 -export([init/1, handle_call/3, handle_cast/2]).
 
 % We are going to use String.msg so we include its header to use its record definition.

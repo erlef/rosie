@@ -82,7 +82,7 @@ init([]) ->
     % the publisher listens to the sub_detector to add remote readers to its writers
     SubDetector =
         dds_subscriber:lookup_datareader(dds_default_subscriber, builtin_sub_detector),
-    dds_data_r:set_listener(SubDetector, {dds_default_publisher, ?MODULE}),
+    dds_data_r:set_listener(SubDetector, {?MODULE, dds_default_publisher}),
 
     % The builtin message writer for general purpose comunications between DDS participants
     GUID_MW =
@@ -165,7 +165,7 @@ handle_cast({on_data_available, {R, ChangeKey}}, #state{data_writers = DW} = S) 
             ToBeMatched =
                 [Pid
                  || {_, T, Pid} <- DW,
-                    T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
+                    T#dds_user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
             %io:format("DDS: node willing to subscribe to topic : ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
             %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,Pid} <- DW]]),
             %io:format("DDS: interested writers are: ~p\n", [ToBeMatched]),
@@ -178,7 +178,7 @@ handle_cast({on_data_available, {R, ChangeKey}}, #state{data_writers = DW} = S) 
 produce_sedp_disc_enpoint_data(#participant{guid = #guId{prefix = P},
                                             vendorId = VID,
                                             protocolVersion = PVER},
-                               #user_topic{type_name = TN,
+                               #dds_user_topic{type_name = TN,
                                            name = N,
                                            qos_profile =
                                                #qos_profile{reliability = R,
@@ -199,7 +199,7 @@ produce_sedp_endpoint_leaving(#participant{guid = #guId{prefix = P}}, EntityID) 
     #sedp_endpoint_state{guid = #guId{prefix = P, entityId = EntityID},
                          status_flags = ?STATUS_INFO_UNREGISTERED + ?STATUS_INFO_DISPOSED}.
 
-match_with_discovered_readers(DW, #user_topic{name = Tname, type_name = Ttype}) ->
+match_with_discovered_readers(DW, #dds_user_topic{name = Tname, type_name = Ttype}) ->
     SubDetector =
         dds_subscriber:lookup_datareader(dds_default_subscriber, builtin_sub_detector),
     RemoteReaders = [D || #cacheChange{data = D} <- dds_data_r:read_all(SubDetector)],

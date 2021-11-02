@@ -13,7 +13,7 @@
 -include_lib("dds/include/rtps_constants.hrl").
 
 -record(state,
-        {participant = #participant{}, spdp_writer_guid, spdp_reader_guid, spdp_data}).
+        {participant = #participant{}, spdp_writer_guid, spdp_reader_guid}).
 
 start_link() ->
     gen_server:start_link({local, participant}, ?MODULE, #state{}, []).
@@ -95,7 +95,7 @@ handle_cast({start_discovery, EndPointSet},
     Change = rtps_writer:new_change(W_GUID, produce_SPDP_data(P, EndPointSet)),
     rtps_history_cache:add_change({cache_of, W_GUID}, Change),
 
-    rtps_history_cache:set_listener({cache_of, R_GUID}, {participant, ?MODULE}),
+    rtps_history_cache:set_listener({cache_of, R_GUID}, { ?MODULE, participant}),
     self() ! discovery_loop,
     {noreply, State};
 handle_cast({send_to_all_readers, Msg}, State) ->

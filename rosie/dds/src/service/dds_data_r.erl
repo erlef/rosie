@@ -1,10 +1,11 @@
 -module(dds_data_r).
 
--behaviour(gen_server).
 
 -export([start_link/1, read/2, get_matched_publications/1, read_all/1,
          on_change_available/2, on_change_removed/2, set_listener/2, remote_writer_add/2,
          remote_writer_remove/2, match_remote_writers/2]).
+        
+-behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -55,7 +56,7 @@ remote_writer_remove(Name, W) ->
 init({Topic, #participant{guid = ID}, GUID}) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
     pg:join({data_r_of, GUID}, self()),
-    rtps_history_cache:set_listener({cache_of, GUID}, {{data_r_of, GUID}, ?MODULE}),
+    rtps_history_cache:set_listener({cache_of, GUID}, {?MODULE, {data_r_of, GUID}}),
     % [P|_] = pg:get_members(ID),
     % R = rtps_participant:create_full_reader(P,ReaderConfig,Cache),
     {ok,
@@ -77,7 +78,7 @@ handle_call(_, _, State) ->
 handle_cast({on_change_available, _}, #state{listener = L} = S) when L == not_set ->
     {noreply, S};
 handle_cast({on_change_available, ChangeKey},
-            #state{rtps_reader = GUID, listener = {Name, Module}} = S) ->
+            #state{rtps_reader = GUID, listener = {Module, Name}} = S) ->
     Module:on_data_available(Name, {{data_r_of, GUID}, ChangeKey}),
     {noreply, S};
 handle_cast({match_remote_writers, Writers},

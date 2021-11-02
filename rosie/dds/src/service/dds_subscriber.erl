@@ -1,9 +1,14 @@
 -module(dds_subscriber).
 
--behaviour(gen_server).
+
 
 -export([start_link/0, get_all_data_readers/1, create_datareader/2, lookup_datareader/2,
-         on_data_available/2, dispose_data_readers/1]). %set_subscription_publisher/2,
+        dispose_data_readers/1]). %set_subscription_publisher/2,
+
+-behaviour(gen_data_reader_listener).
+-export([on_data_available/2]).
+
+-behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/dds_types.hrl").
@@ -63,7 +68,7 @@ init([]) ->
         supervisor:start_child(dds_datareaders_pool_sup,
                                [{data_reader, dds_pub_detector, P_info, SEDP_Pub_Config}]),
 
-    dds_data_r:set_listener({data_r_of, GUID_p}, {dds_default_subscriber, ?MODULE}),
+    dds_data_r:set_listener({data_r_of, GUID_p}, {?MODULE, dds_default_subscriber}),
 
     % The subscription-reader(aka detector) will listen to which topics the other participants want to subscribe
     GUID_s =
@@ -147,7 +152,7 @@ handle_cast({on_data_available, {R, ChangeKey}}, #state{data_readers = DR} = S) 
             ToBeMatched =
                 [Name
                  || {_, T, Name} <- DR,
-                    T#user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
+                    T#dds_user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
             %io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
             %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,_} <- DR]]),
             %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
@@ -166,7 +171,7 @@ handle_info(_, State) ->
 produce_sedp_disc_enpoint_data(#participant{guid = #guId{prefix = P},
                                             vendorId = VID,
                                             protocolVersion = PVER},
-                               #user_topic{type_name = TN,
+                               #dds_user_topic{type_name = TN,
                                            name = N,
                                            qos_profile =
                                                #qos_profile{reliability = R,
@@ -188,7 +193,7 @@ produce_sedp_endpoint_leaving(#participant{guid = #guId{prefix = P}}, EntityID) 
                          status_flags = ?STATUS_INFO_UNREGISTERED + ?STATUS_INFO_DISPOSED}.
 
 match_with_discovered_writers(DR,
-                              #user_topic{name = Tname, type_name = Ttype},
+                              #dds_user_topic{name = Tname, type_name = Ttype},
                               #state{builtin_pub_detector = PubDetector}) ->
     RemoteWriters = [D || #cacheChange{data = D} <- dds_data_r:read_all(PubDetector)],
     %io:format("Remote writers for topic ~p are ~p\n",[Tname,RemoteWriters]),

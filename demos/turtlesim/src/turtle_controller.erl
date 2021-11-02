@@ -26,6 +26,7 @@ print_spawn_responce(#turtlesim_spawn_rp{name = Name}) ->
 init(_) ->
     Node = ros_context:create_node("turtle_controller"),
 
+
     Pub = ros_node:create_publisher(Node, geometry_msgs_twist_msg, "turtle1/cmd_vel"),
 
     Client = ros_node:create_client(Node, turtlesim_spawn_srv, fun print_spawn_responce/1),

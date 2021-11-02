@@ -17,6 +17,6 @@
         {durability = ?VOLATILE_DURABILITY_QOS,
          reliability = ?RELIABLE_RELIABILITY_QOS,
          history = {?KEEP_LAST_HISTORY_QOS, 1}}).
--record(user_topic, {type_name, name, qos_profile = #qos_profile{}}).
+-record(dds_user_topic, {type_name, name, qos_profile = #qos_profile{}}).
 
 -endif.

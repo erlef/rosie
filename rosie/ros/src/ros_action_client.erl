@@ -1,17 +1,13 @@
 -module(ros_action_client).
-
 -export([start_link/3, wait_for_server/2, send_goal/2, get_result/2, cancel_goal/2]).
 
 -behaviour(gen_client_listener).
-
 -export([on_service_reply/2]).
 
 -behaviour(gen_subscription_listener).
-
 -export([on_topic_msg/2]).
 
 -behaviour(gen_server).
-
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("action_msgs/src/_rosie/action_msgs_goal_status_array_msg.hrl").
@@ -67,31 +63,31 @@ init(#state{node = Node,
             action_interface = Action,
             callback_handler = CallbackHandler} =
          S) ->
-    Name = {?MODULE, Action},
-    pg:join(Name, self()),
+    ClientName = {?MODULE, Node, Action},
+    pg:join(ClientName, self()),
 
     %customized by the user
     RequestGoalClient =
-        ros_node:create_client(Node, Action:get_goal_srv_module(), {?MODULE, Name}),
+        ros_node:create_client(Node, Action:get_goal_srv_module(), {?MODULE, ClientName}),
     GetResultClient =
-        ros_node:create_client(Node, Action:get_result_srv_module(), {?MODULE, Name}),
+        ros_node:create_client(Node, Action:get_result_srv_module(), {?MODULE, ClientName}),
     FeedbackSub =
         ros_node:create_subscription(Node,
                                      Action:get_feedback_msg_module(),
                                      Action:get_action_name() ++ "/_action/feedback",
-                                     {?MODULE, Name}),
+                                     {?MODULE, ClientName}),
 
     %standard but names must be specialized for this action instance
     CancelGoalClient =
         ros_node:create_client(Node,
                                {action_msgs_cancel_goal_srv,
                                 Action:get_action_name() ++ "/_action/"},
-                               {?MODULE, Name}),
+                               {?MODULE, ClientName}),
     StatusSub =
         ros_node:create_subscription(Node,
                                      action_msgs_goal_status_array_msg,
                                      Action:get_action_name() ++ "/_action/status",
-                                     {?MODULE, Name}),
+                                     {?MODULE, ClientName}),
 
     {ok,
      S#state{request_goal_client = RequestGoalClient,

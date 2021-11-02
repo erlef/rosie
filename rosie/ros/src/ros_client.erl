@@ -1,11 +1,14 @@
 -module(ros_client).
-
--export([start_link/3, wait_for_service/2, service_is_ready/1, call/2, cast/2,
-         on_data_available/2]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([start_link/3, wait_for_service/2, service_is_ready/1, call/2, cast/2]).
 
 -behaviour(gen_server).
--behaviour(gen_data_reader_listener).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+
+-behaviour(gen_subscription_listener).
+-export([on_topic_msg/2]).
+
+-behaviour(gen_dds_entity_owner).
+-export([get_all_dds_entities/1]).
 
 -include_lib("dds/include/rtps_structure.hrl").
 -include_lib("dds/include/dds_types.hrl").
@@ -16,8 +19,8 @@
          name_prefix = "",
          user_process,
          client_id,
-         dds_data_writer,
-         dds_data_reader,
+         request_publisher,
+         responce_subscription,
          waiting_caller = none}).
 
 start_link(Node, {Service, NamePrefix}, CallbackHandler) ->
@@ -50,84 +53,87 @@ cast(Name, Request) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {send_request_async, Request}).
 
-on_data_available(Name, {Reader, ChangeKey}) ->
+get_all_dds_entities(Name) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:cast(Pid, {on_data_available, {Reader, ChangeKey}}).
+    gen_server:call(Pid, get_all_dds_entities).
+
+on_topic_msg(Name, BinaryMsg) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:cast(Pid, {on_topic_msg, BinaryMsg}).
 
 %callbacks
 %
-init(#state{service_handle = Service, name_prefix = NP} = S) ->
-    pg:join({?MODULE, Service}, self()),
+init(#state{node = Node, service_handle = Service, name_prefix = NP} = S) ->
+    ClientName = {?MODULE, Node, Service},
+    pg:join(ClientName, self()),
     % A client publishes to the request topic
-    SpawnRequest_name = "rq/" ++ NP ++ Service:get_name() ++ "Request",
-    SpawnRequest_type = Service:get_type() ++ "Request_",
-    SpawnRequest = #user_topic{name = SpawnRequest_name, type_name = SpawnRequest_type},
+    Request_name = "rq/" ++ NP ++ Service:get_name() ++ "Request",
+    Request_type = Service:get_type() ++ "Request_",
+    Request = #dds_user_topic{name = Request_name, type_name = Request_type},
 
-    Pub = dds_domain_participant:get_default_publisher(dds),
-    DW = dds_publisher:create_datawriter(Pub, SpawnRequest),
+    {ok, _} = supervisor:start_child(ros_publishers_sup, [raw, Node, Request]),
+    RP_id = {ros_publisher, Node, Request_name},
 
     % Then it also listens to the reply topic
-    SpawnReply_name = "rr/" ++ NP ++ Service:get_name() ++ "Reply",
-    SpawnReply_type = Service:get_type() ++ "Response_",
-    SpawnReply = #user_topic{name = SpawnReply_name, type_name = SpawnReply_type},
+    Reply_name = "rr/" ++ NP ++ Service:get_name() ++ "Reply",
+    Reply_type = Service:get_type() ++ "Response_",
+    Reply = #dds_user_topic{name = Reply_name, type_name = Reply_type},
 
-    SUB = dds_domain_participant:get_default_subscriber(dds),
-    DR = dds_subscriber:create_datareader(SUB, SpawnReply),
-    dds_data_r:set_listener(DR, {{?MODULE, Service}, ?MODULE}),
+    {ok, _} = supervisor:start_child(ros_subscriptions_sup, [raw, Node, Reply, {?MODULE, ClientName}]),
+    RS_id = {ros_subscription, Node, Reply_name},
+
     {ok,
-     S#state{dds_data_writer = DW,
-             dds_data_reader = DR,
-             client_id = <<(crypto:strong_rand_bytes(8))/binary>>}}.
+     S#state{
+            request_publisher = RP_id,
+            responce_subscription = RS_id,
+            client_id = <<(crypto:strong_rand_bytes(8))/binary>>}}.
 
 handle_call({wait_for_service, Timeout}, {Caller, _}, S) ->
     self() ! {wait_for_service_loop, Caller, Timeout, erlang:monotonic_time(millisecond)},
     {reply, ok, S};
-handle_call(service_is_ready,
-            _,
-            #state{dds_data_writer = DW, dds_data_reader = DR} = S) ->
+handle_call(service_is_ready, _, S) ->
     {reply, h_service_is_ready(S), S};
 handle_call({send_request_and_wait, Request},
             From,
-            #state{dds_data_writer = DW,
+            #state{request_publisher = RP,
                    service_handle = Service,
                    client_id = ID} =
                 S) ->
     Serialized = Service:serialize_request(ID, 1, Request),
-    dds_data_w:write(DW, Serialized),
-    {noreply, S#state{waiting_caller = From}}.
+    ros_publisher:publish(RP, Serialized),
+    {noreply, S#state{waiting_caller = From}};
+handle_call(get_all_dds_entities, _, #state{request_publisher = RP, responce_subscription= RS}=S) ->
+    {[DW],_} = ros_publisher:get_all_dds_entities(RP),
+    {_,[DR]} = ros_subscription:get_all_dds_entities(RS),
+    {reply, {[DW],[DR]}, S}.
 
 handle_cast({send_request_async, Request},
-            #state{dds_data_writer = DW,
+            #state{request_publisher = RP,
                    service_handle = Service,
                    client_id = ID} =
                 S) ->
     Serialized = Service:serialize_request(ID, 1, Request),
-    dds_data_w:write(DW, Serialized),
+    ros_publisher:publish(RP, Serialized),
     {noreply, S};
-handle_cast({on_data_available, {Reader, ChangeKey}},
+handle_cast({on_topic_msg, Binary},
             #state{client_id = Client_ID,
                    waiting_caller = Caller,
                    service_handle = Service} =
                 S)
     when Caller /= none ->
-    Change = dds_data_r:read(Reader, ChangeKey),
-    SerializedPayload = Change#cacheChange.data,
-    case Service:parse_reply(SerializedPayload) of
+    case Service:parse_reply(Binary) of
         {Client_ID, RequestNumber, Reply} ->
             gen_server:reply(Caller, Reply),
             {noreply, S#state{waiting_caller = none}};
         _ ->
             {noreply, S}
     end;
-handle_cast({on_data_available, {Reader, ChangeKey}},
+handle_cast({on_topic_msg, Binary},
             #state{client_id = Client_ID,
                    user_process = {M, Pid},
                    service_handle = Service} =
                 S) ->
-    Change = dds_data_r:read(Reader, ChangeKey),
-
-    SerializedPayload = Change#cacheChange.data,
-    case Service:parse_reply(SerializedPayload) of
+    case Service:parse_reply(Binary) of
         {Client_ID, RequestNumber, Reply} ->
             M:on_service_reply(Pid, Reply),
             {noreply, S};
@@ -149,7 +155,9 @@ handle_info({wait_for_service_loop, Caller, Timeout, Start}, S) ->
     end,
     {noreply, S}.
 
-h_service_is_ready(#state{dds_data_writer = DW, dds_data_reader = DR} = S) ->
+h_service_is_ready(#state{request_publisher = RP, responce_subscription = RS} = S) ->
+    {[DW],_} = ros_publisher:get_all_dds_entities(RP),
+    {_,[DR]} = ros_subscription:get_all_dds_entities(RS),
     Pubs = dds_data_r:get_matched_publications(DR), %io:format("~p\n",[Pubs]),
     Subs = dds_data_w:get_matched_subscriptions(DW), %io:format("~p\n",[Subs]),
     DEF_PUB = dds_domain_participant:get_default_publisher(dds),
