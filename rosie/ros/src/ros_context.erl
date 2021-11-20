@@ -30,7 +30,10 @@ start_link() ->
     gen_server:start_link({local, ?ROS_CONTEXT}, ?MODULE, #state{}, []).
 
 create_node(Name) ->
-    gen_server:call(?ROS_CONTEXT, {create_node, Name}).
+    gen_server:call(?ROS_CONTEXT, {create_node, Name, #ros_node_options{}}).
+
+create_node(Name, OptionMap) ->
+    gen_server:call(?ROS_CONTEXT, {create_node, Name, OptionMap}).
 
 create_action_client(Node, ActionInterface, CallbackHandler) ->
     gen_server:call(?ROS_CONTEXT,
@@ -77,8 +80,8 @@ init(S) ->
         discovery_subscriber = {ros_subscription, ?ROS_CONTEXT, "ros_discovery_info"}
     }}.
 
-handle_call({create_node, Name}, _, #state{ros_nodes=NODES} = S) ->
-    {ok, _} = supervisor:start_child(ros_node_sup, [Name]),
+handle_call({create_node, Name, Options}, _, #state{ros_nodes=NODES} = S) ->
+    {ok, _} = supervisor:start_child(ros_node_sup, [Name, Options]),
     ros_context:update_ros_discovery(),
     {reply, {ros_node, Name}, S#state{ros_nodes = [{ros_node, Name}|NODES]} };
 handle_call({create_action_client, Node, ActionInterface, CallbackHandler}, _, S) ->

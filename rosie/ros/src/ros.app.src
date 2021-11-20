@@ -6,7 +6,10 @@
   {applications,
    [kernel,
     stdlib,
-    dds
+    dds,
+    rmw_dds_common,
+    rcl_interfaces,
+    action_msgs
    ]},
   {env,[]},
   {modules, []},
