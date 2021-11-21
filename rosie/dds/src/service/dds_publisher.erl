@@ -57,10 +57,16 @@ init([]) ->
 
     P_info = rtps_participant:get_info(participant),
     SPDP_W_cfg = rtps_participant:get_spdp_writer_config(participant),
+    SPDP_W_qos = #qos_profile{
+        reliability = ?BEST_EFFORT_RELIABILITY_QOS,
+        durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
+        history = {?KEEP_ALL_HISTORY_QOS, -1}
+    },
     {ok, _} =
         supervisor:start_child(dds_datawriters_pool_sup,
-                               [{discovery_writer, P_info, SPDP_W_cfg}]),
+                               [{discovery_writer, P_info, SPDP_W_cfg, SPDP_W_qos}]),
 
+    SEDP_qos = #qos_profile{durability = ?TRANSIENT_LOCAL_DURABILITY_QOS, history = {?KEEP_ALL_HISTORY_QOS, -1}},
     % the Subscription-writer(aka announcer) will forward my willing to listen to defined topics
     GUID_s =
         #guId{prefix = P_info#participant.guid#guId.prefix,
@@ -68,7 +74,7 @@ init([]) ->
     SEDP_Sub_Config = #endPoint{guid = GUID_s},
     {ok, _} =
         supervisor:start_child(dds_datawriters_pool_sup,
-                               [{data_writer, builtin_sub_announcer, P_info, SEDP_Sub_Config}]),
+                               [{data_writer, #dds_user_topic{qos_profile=SEDP_qos}, P_info, SEDP_Sub_Config}]),
 
     %the publication-writer(aka announcer) will forward my willing to talk to defined topics
     GUID_p =
@@ -77,7 +83,7 @@ init([]) ->
     SEDP_Pub_Config = #endPoint{guid = GUID_p},
     {ok, _} =
         supervisor:start_child(dds_datawriters_pool_sup,
-                               [{data_writer, builtin_pub_announcer, P_info, SEDP_Pub_Config}]),
+                               [{data_writer, #dds_user_topic{qos_profile=SEDP_qos}, P_info, SEDP_Pub_Config}]),
 
     % the publisher listens to the sub_detector to add remote readers to its writers
     SubDetector =
@@ -91,7 +97,7 @@ init([]) ->
     P2P_Writer_Config = #endPoint{guid = GUID_MW},
     {ok, _} =
         supervisor:start_child(dds_datawriters_pool_sup,
-                               [{data_writer, builtin_msg_writer, P_info, P2P_Writer_Config}]),
+                               [{data_writer, #dds_user_topic{qos_profile=SEDP_qos}, P_info, P2P_Writer_Config}]),
 
     {ok,
      #state{rtps_participant_info = P_info,

@@ -56,9 +56,15 @@ init([]) ->
 
     P_info = rtps_participant:get_info(participant),
     SPDP_R_cfg = rtps_participant:get_spdp_reader_config(participant),
+    SPDP_R_qos = #qos_profile{
+        reliability = ?BEST_EFFORT_RELIABILITY_QOS,
+        durability = ?TRANSIENT_LOCAL_DURABILITY_QOS,
+        history = {?KEEP_ALL_HISTORY_QOS, -1}
+    },
     supervisor:start_child(dds_datareaders_pool_sup,
-                           [{discovery_reader, P_info, SPDP_R_cfg}]),
-
+                           [{discovery_reader, P_info, SPDP_R_cfg, SPDP_R_qos}]),
+    
+    SEDP_qos = #qos_profile{durability = ?TRANSIENT_LOCAL_DURABILITY_QOS, history = {?KEEP_ALL_HISTORY_QOS, -1}},
     % The publication-reader(aka detector) will listen to which topics the other participants want to publish
     GUID_p =
         #guId{prefix = P_info#participant.guid#guId.prefix,
@@ -66,7 +72,7 @@ init([]) ->
     SEDP_Pub_Config = #endPoint{guid = GUID_p},
     {ok, _} =
         supervisor:start_child(dds_datareaders_pool_sup,
-                               [{data_reader, dds_pub_detector, P_info, SEDP_Pub_Config}]),
+                               [{data_reader, #dds_user_topic{qos_profile=SEDP_qos}, P_info, SEDP_Pub_Config}]),
 
     dds_data_r:set_listener({data_r_of, GUID_p}, {?MODULE, dds_default_subscriber}),
 
@@ -77,7 +83,7 @@ init([]) ->
     SEDP_Sub_Config = #endPoint{guid = GUID_s},
     {ok, _} =
         supervisor:start_child(dds_datareaders_pool_sup,
-                               [{data_reader, dds_sub_detector, P_info, SEDP_Sub_Config}]),
+                               [{data_reader, #dds_user_topic{qos_profile=SEDP_qos}, P_info, SEDP_Sub_Config}]),
 
     % The builtin message reader for general purpose comunications between DDS participants
     GUID_MR =
@@ -86,7 +92,7 @@ init([]) ->
     P2P_Reader_Config = #endPoint{guid = GUID_MR},
     {ok, _} =
         supervisor:start_child(dds_datareaders_pool_sup,
-                               [{data_reader, builtin_msg_reader, P_info, P2P_Reader_Config}]),
+                               [{data_reader, #dds_user_topic{qos_profile=SEDP_qos}, P_info, P2P_Reader_Config}]),
 
     {ok,
      #state{rtps_participant_info = P_info,

@@ -5,6 +5,7 @@
 -export([start_link/1]).
 -export([init/1]).
 
+-include_lib("dds/include/dds_types.hrl").
 -include_lib("dds/include/rtps_structure.hrl").
 
 start_link(Args) ->
@@ -27,7 +28,7 @@ init({data_writer, Topic, P_info, Config}) ->
           period => 1},
     CACHE =
         #{id => writer_cache,
-          start => {rtps_history_cache, start_link, [Config#endPoint.guid]},
+          start => {rtps_history_cache, start_link, [Config#endPoint.guid, Topic#dds_user_topic.qos_profile]},
           restart => permanent,
           shutdown => 5000,
           type => worker},
@@ -54,7 +55,7 @@ init({data_reader, Topic, P_info, Config}) ->
           period => 1},
     CACHE =
         #{id => reader_cache,
-          start => {rtps_history_cache, start_link, [Config#endPoint.guid]},
+          start => {rtps_history_cache, start_link, [Config#endPoint.guid, Topic#dds_user_topic.qos_profile]},
           restart => permanent,
           shutdown => 5000,
           type => worker},
@@ -74,14 +75,14 @@ init({data_reader, Topic, P_info, Config}) ->
     ChildSpecs = [CACHE, RTPS_READER, DDS_DR],
 
     {ok, {SupFlags, ChildSpecs}};
-init({discovery_writer, P_info, Config}) ->
+init({discovery_writer, P_info, Config, QOS}) ->
     SupFlags =
         #{strategy => one_for_all,
           intensity => 0,
           period => 1},
     CACHE =
         #{id => discovery_writer_cache,
-          start => {rtps_history_cache, start_link, [Config#endPoint.guid]},      % mandatory
+          start => {rtps_history_cache, start_link, [Config#endPoint.guid, QOS]},      % mandatory
           restart => permanent,   % optional
           shutdown => 5000, % optional
           type => worker},   % optional
@@ -93,14 +94,14 @@ init({discovery_writer, P_info, Config}) ->
           type => worker},   % optional
     ChildSpecs = [CACHE, RTPS_WRITER],
     {ok, {SupFlags, ChildSpecs}};
-init({discovery_reader, P_info, Config}) ->
+init({discovery_reader, P_info, Config, QOS}) ->
     SupFlags =
         #{strategy => one_for_all,
           intensity => 0,
           period => 1},
     CACHE =
         #{id => discovery_reader_cache,       % mandatory
-          start => {rtps_history_cache, start_link, [Config#endPoint.guid]},      % mandatory
+          start => {rtps_history_cache, start_link, [Config#endPoint.guid, QOS]},      % mandatory
           restart => permanent,   % optional
           shutdown => 5000, % optional
           type => worker},   % optional
