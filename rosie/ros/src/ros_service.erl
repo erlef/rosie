@@ -1,5 +1,5 @@
 -module(ros_service).
--export([start_link/4, start_link/3, send_response/2]).
+-export([start_link/4, start_link/3, send_response/2, destroy/1]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2]).
@@ -51,6 +51,9 @@ start_link(Node, Service, {Module, Pid}) ->
                                  service_interface = Service,
                                  user_process = {Module, Pid}},
                           []).
+destroy(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, destroy).
 
 %This second start-link is for internal use by the action modules
 send_response(Name, Response) ->
@@ -98,6 +101,13 @@ init(#state{node = Node,
         request_subscription = RS_id,
         responce_publication = RP_id}}.
 
+handle_call(destroy, _, #state{ request_subscription = SUB,
+                                responce_publication = PUB} = S) ->
+    ros_subscription:destroy(SUB),
+    ros_publisher:destroy(PUB),
+    Pid = self(),
+    spawn(fun() -> supervisor:terminate_child(ros_services_sup, Pid) end),
+    {reply, ok, S};
 handle_call(get_all_dds_entities, _, #state{request_subscription = RS, responce_publication = RP}=S) ->
     {[DW],_} = ros_publisher:get_all_dds_entities(RP),
     {_,[DR]} = ros_subscription:get_all_dds_entities(RS),

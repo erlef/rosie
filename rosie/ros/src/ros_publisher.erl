@@ -1,5 +1,5 @@
 -module(ros_publisher).
--export([start_link/4, start_link/3, publish/2]).
+-export([start_link/4, start_link/3, publish/2, destroy/1]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2]).
@@ -39,6 +39,9 @@ start_link(MsgModule, Node, TopicName) ->
                             topic = #dds_user_topic{name = TopicName,
                                                 type_name = MsgModule:get_type()}},
                           []).
+destroy(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, destroy).
 
 get_all_dds_entities(Name) ->
     [Pid | _] = pg:get_members(Name),
@@ -57,6 +60,11 @@ init(#state{ node = Node,
     DW = dds_publisher:create_datawriter(Pub, Topic),
     {ok, S#state{dds_data_writer = DW}}.
 
+handle_call(destroy, _, #state{} = S) ->
+    io:format("publisher destroyed\n"),
+    Pid = self(),
+    spawn(fun() -> supervisor:terminate_child(ros_publishers_sup, Pid) end),
+    {reply, ok, S};
 handle_call(get_all_dds_entities, _, #state{dds_data_writer= DW}=S) ->
     {reply, {[DW],[]}, S}.
 

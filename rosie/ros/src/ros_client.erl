@@ -1,5 +1,5 @@
 -module(ros_client).
--export([start_link/3, wait_for_service/2, service_is_ready/1, call/2, cast/2]).
+-export([start_link/3, wait_for_service/2, service_is_ready/1, call/2, cast/2, destroy/1]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -36,6 +36,9 @@ start_link(Node, Service, CallbackHandler) ->
                                  service_handle = Service,
                                  user_process = CallbackHandler},
                           []).
+destroy(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, destroy).
 
 wait_for_service(Name, Timeout) ->
     [Pid | _] = pg:get_members(Name),
@@ -88,6 +91,13 @@ init(#state{node = Node, service_handle = Service, name_prefix = NP} = S) ->
             responce_subscription = RS_id,
             client_id = <<(crypto:strong_rand_bytes(8))/binary>>}}.
 
+handle_call(destroy, _, #state{request_publisher=PUB,
+                                responce_subscription= SUB} = S) ->
+    ros_publisher:destroy(PUB),
+    ros_subscription:destroy(SUB),
+    Pid = self(),
+    spawn(fun() -> supervisor:terminate_child(ros_clients_sup, Pid) end),
+    {reply, ok, S};
 handle_call({wait_for_service, Timeout}, {Caller, _}, S) ->
     self() ! {wait_for_service_loop, Caller, Timeout, erlang:monotonic_time(millisecond)},
     {reply, ok, S};

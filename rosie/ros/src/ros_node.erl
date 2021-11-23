@@ -1,7 +1,8 @@
 -module(ros_node).
-
+% internal use
+-export([start_link/2, destroy/1]).
+% API
 -export([
-    start_link/2,
     get_name/1,
 
     declare_parameter/2,
@@ -24,7 +25,12 @@
     create_publisher/4,
     create_client/3,
     create_service/3,
-    create_service/4
+    create_service/4,
+
+    destroy_subscription/2,
+    destroy_publisher/2,
+    destroy_client/2,
+    destroy_service/2
 ]).
 
 -behaviour(gen_subscription_listener).
@@ -72,6 +78,10 @@
 
 start_link(Name, OptionRecord) ->
     gen_server:start_link(?MODULE, {Name, OptionRecord}, []).
+
+destroy(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, destroy).
 
 get_name(Name) ->
     [Pid | _] = pg:get_members(Name),
@@ -157,6 +167,22 @@ create_service(Name, Service, QoSProfile, Callback) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:call(Pid, {create_service, Service, QoSProfile, Callback}).
 
+destroy_subscription(Name, Subscription) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {destroy_subscription, Subscription}).
+
+destroy_publisher(Name, Publisher) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {destroy_publisher, Publisher}).
+
+destroy_client(Name, Client) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {destroy_client, Client}).
+
+destroy_service(Name, Service) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {destroy_service, Service}).
+
 on_topic_msg(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {on_topic_msg, Msg}).
@@ -168,6 +194,7 @@ on_client_request(Name, Msg) ->
 get_all_dds_entities(Name) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:call(Pid, get_all_dds_entities).
+
 
 %callbacks
 %
@@ -182,6 +209,7 @@ init(
             automatically_declare_parameters_from_overrides = AutoDeclareFromOverrides
         } = Options}
 ) ->
+    % process_flag(trap_exit, true),
     NodeID = {ros_node, NodeName},
     pg:join(NodeID, self()),
     Rosout_pub =
@@ -191,7 +219,7 @@ init(
         end,
     {ParamPublishers, ParamServices} =
         case StartServices of
-            true -> start_up_param_topics_and_services(NodeID);
+            true -> ros_node_utils:start_up_param_topics_and_services(NodeID);
             false -> {[], []}
         end,
 
@@ -202,6 +230,19 @@ init(
         services = ParamServices
     }}.
 
+
+handle_call(destroy, _, #state{name= N,
+                                subscriptions = Subscriptions,
+                                publishers = Publishers,
+                                clients = Clients,
+                                services = Services} = S) ->
+    [ros_subscription:destroy(Sub) || Sub <- Subscriptions],
+    [ros_publisher:destroy(P) || P <- Publishers],
+    [ros_client:destroy(C) || C <- Clients],
+    [ros_service:destroy(Serv) || Serv <- Services],
+    Pid = self(),
+    spawn(fun() -> supervisor:terminate_child(ros_node_sup, Pid) end),
+    {reply, ok, S};
 handle_call({declare_parameter, ParamName, ParamValue}, _, S) ->
     {Result, NewS} = h_declare_parameter(ParamName, ParamValue, S),
     {reply, Result, NewS};
@@ -224,24 +265,24 @@ handle_call({set_descriptor,  ParamName, NewDescriptor, AlternativeValue}, _, S)
 
 handle_call(
     {create_subscription, raw, Topic, CallbackHandler}, _, #state{subscriptions = SUBS} = S
-) ->
+    ) ->
     ID = h_create_subscription(raw, Topic, CallbackHandler, S),
     {reply, ID, S#state{subscriptions = [ID | SUBS]}};
 handle_call(
     {create_subscription, MsgModule, TopicName, CallbackHandler},
     _,
     #state{subscriptions = SUBS} = S
-) ->
-    ID = h_create_subscription(MsgModule, put_topic_prefix(TopicName), CallbackHandler, S),
+    ) ->
+    ID = h_create_subscription(MsgModule, ros_node_utils:put_topic_prefix(TopicName), CallbackHandler, S),
     {reply, ID, S#state{subscriptions = [ID | SUBS]}};
 handle_call({create_publisher, raw, Topic}, _, #state{publishers = PUBS} = S) ->
     ID = h_create_raw_publisher(raw, Topic, S),
     {reply, ID, S#state{publishers = [ID | PUBS]}};
 handle_call({create_publisher, MsgModule, TopicName}, _, #state{publishers = PUBS} = S) ->
-    ID = h_create_publisher(MsgModule, put_topic_prefix(TopicName), #qos_profile{}, S),
+    ID = h_create_publisher(MsgModule, ros_node_utils:put_topic_prefix(TopicName), #qos_profile{}, S),
     {reply, ID, S#state{publishers = [ID | PUBS]}};
 handle_call({create_publisher, MsgModule, TopicName, QoS}, _, #state{publishers = PUBS} = S) ->
-    ID = h_create_publisher(MsgModule, put_topic_prefix(TopicName), QoS, S),
+    ID = h_create_publisher(MsgModule, ros_node_utils:put_topic_prefix(TopicName), QoS, S),
     {reply, ID, S#state{publishers = [ID | PUBS]}};
 handle_call({create_client, Service, CallbackHandler}, _, #state{clients = Clients} = S) ->
     ID = h_create_client(Service, CallbackHandler, S),
@@ -252,6 +293,18 @@ handle_call({create_service, Service, CallbackHandler}, _, #state{services = SRV
 handle_call({create_service, Service, QoSProfile, CallbackHandler}, _, #state{services = SRVs} = S) ->
     ID = h_create_service_qos(Service, QoSProfile, CallbackHandler, S),
     {reply, ID, S#state{services = [ID | SRVs]}};
+handle_call({destroy_subscription, Sub}, _, #state{subscriptions = Subscriptions} = S) ->
+    ros_subscription:destroy(Sub),
+    {reply, ok, S#state{subscriptions = [ S || S <- Subscriptions, S /=  Sub]}};
+handle_call({destroy_publisher, Pub}, _, #state{publishers = Publishers} = S) ->
+    ros_publication:destroy(Pub),
+    {reply, ok, S#state{publishers = [ P || P <- Publishers, P /=  Pub]}};
+handle_call({destroy_client, Client}, _, #state{clients = Clients} = S) ->
+    ros_client:destroy(Client),
+    {reply, ok, S#state{clients = [ C || C <- Clients, C /=  Client]}};
+handle_call({destroy_service, Service}, _, #state{services = Services} = S) ->
+    ros_service:destroy(Service),
+    {reply, ok, S#state{services = [ S || S <- Services, S /=  Service]}};
 handle_call(get_name, _, #state{name = N} = S) ->
     {reply, N, S};
 handle_call({on_client_request, {_, Msg}}, _, S) ->
@@ -289,110 +342,14 @@ handle_cast({on_topic_msg, Msg}, S) ->
 
 % HELPERS
 % 
-is_name_legal(N) when is_list(N) ->
-    SubNames = string:split(string:trim(N,both,"/"), "/", all),
-    lists:all(fun io_lib:printable_latin1_list/1, SubNames) and
-    lists:all(fun(S) -> 
-                {match,[{0,length(S)}]} == re:run(S,"[a-z_]+[a-z_0-9]*") 
-            end, 
-        SubNames);
-is_name_legal(_) -> false.
-
-
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_NOT_SET}) ->
-    none;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_BOOL, bool_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_INTEGER, integer_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_DOUBLE, double_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_STRING, string_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_BYTE_ARRAY, byte_array_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_BOOL_ARRAY, bool_array_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_INTEGER_ARRAY, integer_array_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_DOUBLE_ARRAY, double_array_value = Value}) ->
-    Value;
-extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_STRING_ARRAY, string_array_value = Value}) ->
-    Value.
-
-build_parameter_value(_, invalid) ->
-    invalid;
-build_parameter_value(_, ?PARAMETER_NOT_SET) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_NOT_SET};
-build_parameter_value(Value, ?PARAMETER_BOOL) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_BOOL, bool_value = Value};
-build_parameter_value(Value, ?PARAMETER_INTEGER) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_INTEGER, integer_value = Value};
-build_parameter_value(Value, ?PARAMETER_DOUBLE) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_DOUBLE, double_value = Value};
-build_parameter_value(Value, ?PARAMETER_STRING) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_STRING, string_value = Value};
-build_parameter_value(Value, ?PARAMETER_BYTE_ARRAY) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_BYTE_ARRAY, byte_array_value = Value};
-build_parameter_value(Value, ?PARAMETER_BOOL_ARRAY) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_BOOL_ARRAY, bool_array_value = Value};
-build_parameter_value(Value, ?PARAMETER_INTEGER_ARRAY) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_INTEGER_ARRAY, integer_array_value = Value};
-build_parameter_value(Value, ?PARAMETER_DOUBLE_ARRAY) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_DOUBLE_ARRAY, double_array_value = Value};
-build_parameter_value(Value, ?PARAMETER_STRING_ARRAY) ->
-    #rcl_interfaces_parameter_value{type = ?PARAMETER_STRING_ARRAY, string_array_value = Value}.
-
-% could only be a list of strings
-find_param_value_list_type([Elem | _] = List) when is_list(Elem) ->
-    case lists:all(fun io_lib:printable_latin1_list/1, List) of
-        true -> ?PARAMETER_STRING_ARRAY;
-        false -> invalid
-    end;
-% list of integers or a string
-find_param_value_list_type([Elem | _] = List) when is_integer(Elem) ->
-    case lists:all(fun is_integer/1, List) of
-        true ->
-            case io_lib:printable_latin1_list(List) of
-                true -> ?PARAMETER_STRING;
-                false -> ?PARAMETER_INTEGER_ARRAY
-            end;
-        false ->
-            invalid
-    end;
-find_param_value_list_type([Elem | _] = List) when is_boolean(Elem) ->
-    case lists:all(fun is_boolean/1, List) of
-        true -> ?PARAMETER_BOOL_ARRAY;
-        false -> invalid
-    end;
-find_param_value_list_type([Elem | _] = List) when is_float(Elem) ->
-    case lists:all(fun is_float/1, List) of
-        true -> ?PARAMETER_DOUBLE_ARRAY;
-        false -> invalid
-    end.
-
-find_param_type(none) ->
-    ?PARAMETER_NOT_SET;
-find_param_type([]) ->
-    ?PARAMETER_NOT_SET;
-find_param_type(Value) when is_boolean(Value) ->
-    ?PARAMETER_BOOL;
-find_param_type(Value) when is_integer(Value) ->
-    ?PARAMETER_INTEGER;
-find_param_type(Value) when is_float(Value) ->
-    ?PARAMETER_DOUBLE;
-find_param_type(Value) when is_list(Value) ->
-    find_param_value_list_type(Value);
-find_param_type(_) ->
-    invalid.
 
 h_declare_parameter(ParamName, ParamValue, #state{parameters = Map} = S) ->
-    NameIsLegal = is_name_legal(ParamName),
+    NameIsLegal = ros_node_utils:is_name_legal(ParamName),
     NameUnavailable = lists:member(ParamName, maps:keys(Map)),
-    Type = find_param_type(ParamValue),
+    Type = ros_node_utils:find_param_type(ParamValue),
     NewParam = {
         #rcl_interfaces_parameter_descriptor{name = ParamName, type = Type},
-        build_parameter_value(ParamValue, Type)
+        ros_node_utils:build_parameter_value(ParamValue, Type)
     },
     case {NameUnavailable,NameIsLegal,Type} of
         {true,_,_} -> {{error, parameter_already_declared}, S};
@@ -417,38 +374,29 @@ h_undeclare_parameter(ParamName, #state{parameters = Map} = S) ->
             {{error, parameter_not_declared}, S}
     end.
 
-param_type_is_unset({Desc,Value}) ->
-    (Desc#rcl_interfaces_parameter_descriptor.type == ?PARAMETER_NOT_SET) or
-    (Value#rcl_interfaces_parameter_value.type == ?PARAMETER_NOT_SET).
-
-simplified_parameter_view({Desc,Value}) ->
-    #ros_parameter{name = Desc#rcl_interfaces_parameter_descriptor.name,
-                    type = Desc#rcl_interfaces_parameter_descriptor.type,
-                    value = extract_parameter_value(Value)}.
-
 
 h_get_parameters(ParamNameList, #state{options = 
     #ros_node_options{allow_undeclared_parameters=ALLOW_UNDECLARED}, 
                     parameters=P}) -> 
-    Parameters = get_parameters_from_map(ParamNameList,P),
-    case not ALLOW_UNDECLARED and lists:any(fun param_type_is_unset/1, Parameters) of 
+    Parameters = ros_node_utils:get_parameters_from_map(ParamNameList,P),
+    case not ALLOW_UNDECLARED and lists:any(fun ros_node_utils:param_type_is_unset/1, Parameters) of 
         true -> {error, parameter_not_declared};
-        false -> lists:map(fun simplified_parameter_view/1, Parameters)
+        false -> lists:map(fun ros_node_utils:simplified_parameter_view/1, Parameters)
     end.
 
 set_parameter_in_map( #ros_parameter{name = N , value = V, type = T}, 
         #state{ options = #ros_node_options{allow_undeclared_parameters = ALLOW_UNDECLARED},
                 parameters = Pmap}= S) -> 
     ParamIsDeclared = lists:member(N, maps:keys(Pmap)),
-    ParamIsCoherent = find_param_type(V) == T,
-    {#rcl_interfaces_parameter_descriptor{type =OldParamType},_} = maps:get(N,Pmap, {#rcl_interfaces_parameter_descriptor{},#rcl_interfaces_parameter_value{}}),
+    ParamIsCoherent = ros_node_utils:find_param_type(V) == T,
+    [{#rcl_interfaces_parameter_descriptor{type =OldParamType},_}] = ros_node_utils:get_parameters_from_map([N], Pmap),
     case {ParamIsDeclared, ParamIsCoherent, T, OldParamType} of
         {true, _, ?PARAMETER_NOT_SET, ?PARAMETER_NOT_SET} -> Pmap;
         {true, _, ?PARAMETER_NOT_SET, OLD_T} when OLD_T/= ?PARAMETER_NOT_SET -> maps:remove(N, Pmap);
         {_, false,_,_} -> parameter_value;
         {true,true,_,_} -> {Desc,_} = maps:get(N,Pmap),
                 maps:put(N, {Desc#rcl_interfaces_parameter_descriptor{type = T}, 
-                            build_parameter_value(V, T)},
+                            ros_node_utils:build_parameter_value(V, T)},
                             Pmap);
         {false,true,_,_} -> case ALLOW_UNDECLARED of
                     true -> {_, NewS} = h_declare_parameter(N, V, S), 
@@ -475,26 +423,26 @@ h_set_parameters([Param|TL], Results, S) ->
 h_describe_parameters(ParamNameList, #state{
                 options = #ros_node_options{allow_undeclared_parameters=ALLOW_UNDECLARED}, 
                 parameters=P} = S) ->
-    Parameters = get_parameters_from_map(ParamNameList,P),
-    case not ALLOW_UNDECLARED and lists:any(fun param_type_is_unset/1, Parameters) of 
+    Parameters = ros_node_utils:get_parameters_from_map(ParamNameList,P),
+    case not ALLOW_UNDECLARED and lists:any(fun ros_node_utils:param_type_is_unset/1, Parameters) of 
         true -> {error, parameter_not_declared};
         false -> [ D || {D,V} <- Parameters]
     end.
 
 update_existing_param_desc(N, NewDescriptor, #state{parameters=P} = S) ->
     {_,V} = maps:get(N,P),
-    { extract_parameter_value(V), S#state{parameters = maps:put(N,{NewDescriptor#rcl_interfaces_parameter_descriptor{name = N}, V},P)}}.
+    { ros_node_utils:extract_parameter_value(V), S#state{parameters = maps:put(N,{NewDescriptor#rcl_interfaces_parameter_descriptor{name = N}, V},P)}}.
     
 update_existing_param_desc_and_val(N, NewDescriptor, AltVal, #state{parameters=P} = S) ->
-    V = build_parameter_value(AltVal, NewDescriptor#rcl_interfaces_parameter_descriptor.type),
+    V = ros_node_utils:build_parameter_value(AltVal, NewDescriptor#rcl_interfaces_parameter_descriptor.type),
     { AltVal, S#state{parameters = maps:put(N,{NewDescriptor#rcl_interfaces_parameter_descriptor{name = N}, V},P)}}.
 
 implicit_declare_param_with_desc(N, NewDescriptor, #state{parameters=P} = S) ->
     {_,V} = maps:get(N,P),
-    { extract_parameter_value(V), S#state{parameters = maps:put(N,{NewDescriptor#rcl_interfaces_parameter_descriptor{name = N}, V},P)}}.
+    { ros_node_utils:extract_parameter_value(V), S#state{parameters = maps:put(N,{NewDescriptor#rcl_interfaces_parameter_descriptor{name = N}, V},P)}}.
 
 implicit_declare_param_with_desc_and_val(N, NewDescriptor, AltVal, #state{parameters=P} = S) ->
-    V = build_parameter_value(AltVal, NewDescriptor#rcl_interfaces_parameter_descriptor.type),
+    V = ros_node_utils:build_parameter_value(AltVal, NewDescriptor#rcl_interfaces_parameter_descriptor.type),
     { AltVal, S#state{parameters = maps:put(N,{NewDescriptor#rcl_interfaces_parameter_descriptor{name = N}, V},P)}}.
 
 
@@ -504,12 +452,12 @@ h_set_descriptor( ParamName, NewDescriptor, AltVal, #state{
     ParamDeclared = lists:member(ParamName, maps:keys(Pmap)),
     {IsOldParamReadOnly, OldValCompatibleWithNewDesc }= case ParamDeclared of
         true -> 
-                [{OldD,OldV}|_] = get_parameters_from_map([ParamName],Pmap),
+                [{OldD,OldV}|_] = ros_node_utils:get_parameters_from_map([ParamName],Pmap),
                 {OldD#rcl_interfaces_parameter_descriptor.read_only, 
                 OldV#rcl_interfaces_parameter_value.type == NewDescriptor#rcl_interfaces_parameter_descriptor.type};
         false -> false
     end,
-    AltValType = find_param_type(AltVal),
+    AltValType = ros_node_utils:find_param_type(AltVal),
     AltValTypeMatchesDescriptionType = (NewDescriptor#rcl_interfaces_parameter_descriptor.type == AltValType) and (AltValType /= invalid),
     case {ParamDeclared, IsOldParamReadOnly, OldValCompatibleWithNewDesc, AltValTypeMatchesDescriptionType, ALLOW_UNDECLARED, AltVal}   of
         {true,true,_,_,_,_} ->  {{error, parameter_read_only}, S};
@@ -525,8 +473,7 @@ h_set_descriptor( ParamName, NewDescriptor, AltVal, #state{
 
 % ros endpoints creation
 
-put_topic_prefix(N) ->
-    "rt/" ++ N.
+
 
 h_create_subscription(raw, #dds_user_topic{name = TopicName} = Topic, CallbackHandler, #state{
     name = Name
@@ -602,115 +549,15 @@ start_up_rosout(NodeID) ->
             [
                 rcl_interfaces_log_msg,
                 NodeID,
-                put_topic_prefix("rosout"),
+                ros_node_utils:put_topic_prefix("rosout"),
                 Qos_profile
             ]
         ),
-    {ros_publisher, NodeID, put_topic_prefix("rosout")}.
+    {ros_publisher, NodeID, ros_node_utils:put_topic_prefix("rosout")}.
 
-start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
-    Qos_profile = #qos_profile{history = {?KEEP_ALL_HISTORY_QOS, -1}},
-    % Topics
-    {ok, _} =
-        supervisor:start_child(
-            ros_publishers_sup,
-            [
-                rcl_interfaces_parameter_event_msg,
-                NodeID,
-                put_topic_prefix("parameter_events"),
-                Qos_profile
-            ]
-        ),
-    % ROS_PARAMETERS -> Service Servers
-    NodeNamePrefix = NodeName ++ "/",
-    {ok, _} =
-        supervisor:start_child(
-            ros_services_sup,
-            [
-                NodeID,
-                {rcl_interfaces_describe_parameters_srv, NodeNamePrefix},
-                Qos_profile,
-                {?MODULE, NodeID}
-            ]
-        ),
-    {ok, _} =
-        supervisor:start_child(
-            ros_services_sup,
-            [
-                NodeID,
-                {rcl_interfaces_get_parameter_types_srv, NodeNamePrefix},
-                Qos_profile,
-                {?MODULE, NodeID}
-            ]
-        ),
-    {ok, _} =
-        supervisor:start_child(
-            ros_services_sup,
-            [
-                NodeID,
-                {rcl_interfaces_get_parameters_srv, NodeNamePrefix},
-                Qos_profile,
-                {?MODULE, NodeID}
-            ]
-        ),
-    {ok, _} =
-        supervisor:start_child(
-            ros_services_sup,
-            [
-                NodeID,
-                {rcl_interfaces_list_parameters_srv, NodeNamePrefix},
-                Qos_profile,
-                {?MODULE, NodeID}
-            ]
-        ),
-    {ok, _} =
-        supervisor:start_child(
-            ros_services_sup,
-            [
-                NodeID,
-                {rcl_interfaces_set_parameters_srv, NodeNamePrefix},
-                Qos_profile,
-                {?MODULE, NodeID}
-            ]
-        ),
-    {ok, _} =
-        supervisor:start_child(
-            ros_services_sup,
-            [
-                NodeID,
-                {rcl_interfaces_set_parameters_atomically_srv, NodeName ++ "/"},
-                Qos_profile,
-                {?MODULE, NodeID}
-            ]
-        ),
-    Publishers = [
-        {ros_publisher, NodeID, put_topic_prefix("parameter_events")}
-    ],
-    ParameterServices = [
-        {ros_service, NodeID, rcl_interfaces_describe_parameters_srv},
-        {ros_service, NodeID, rcl_interfaces_get_parameter_types_srv},
-        {ros_service, NodeID, rcl_interfaces_get_parameters_srv},
-        {ros_service, NodeID, rcl_interfaces_list_parameters_srv},
-        {ros_service, NodeID, rcl_interfaces_set_parameters_srv},
-        {ros_service, NodeID, rcl_interfaces_set_parameters_atomically_srv}
-    ],
-    {Publishers, ParameterServices}.
-
-get_parameters_from_map(Names, Map) ->
-    [
-        maps:get(
-            N,
-            Map,
-            {
-                #rcl_interfaces_parameter_descriptor{name = N, type = ?PARAMETER_NOT_SET},
-                #rcl_interfaces_parameter_value{type = ?PARAMETER_NOT_SET}
-            }
-        )
-     || N <- Names
-    ].
 
 mark_set_rq({Key, NEWV}, Map) ->
-    case get_parameters_from_map([Key], Map) of
+    case ros_node_utils:get_parameters_from_map([Key], Map) of
         [{D, V}] when
             (V#rcl_interfaces_parameter_value.type /= ?PARAMETER_NOT_SET) and
                 (NEWV#rcl_interfaces_parameter_value.type /= ?PARAMETER_NOT_SET) and
@@ -766,7 +613,7 @@ h_parameter_request(
 ) ->
     {
         #rcl_interfaces_describe_parameters_rp{
-            descriptors = [D || {D, _} <- get_parameters_from_map(Names, P)]
+            descriptors = [D || {D, _} <- ros_node_utils:get_parameters_from_map(Names, P)]
         },
         S
     };
@@ -784,7 +631,7 @@ h_parameter_request(
 h_parameter_request(
     #rcl_interfaces_get_parameter_types_rq{names = Names}, #state{parameters = P} = S
 ) ->
-    Parameters = get_parameters_from_map(Names, P),
+    Parameters = ros_node_utils:get_parameters_from_map(Names, P),
     {
         #rcl_interfaces_get_parameter_types_rp{
             types = [T || {_, #rcl_interfaces_parameter_value{type = T}} <- Parameters]
@@ -794,7 +641,7 @@ h_parameter_request(
 h_parameter_request(#rcl_interfaces_get_parameters_rq{names = Names}, #state{parameters = P} = S) ->
     {
         #rcl_interfaces_get_parameters_rp{
-            values = [Value || {_, Value} <- get_parameters_from_map(Names, P)]
+            values = [Value || {_, Value} <- ros_node_utils:get_parameters_from_map(Names, P)]
         },
         S
     }.

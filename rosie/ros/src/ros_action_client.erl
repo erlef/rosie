@@ -1,5 +1,8 @@
 -module(ros_action_client).
--export([start_link/3, wait_for_server/2, send_goal/2, get_result/2, cancel_goal/2]).
+-export([start_link/3, destroy/1]).
+
+%API
+-export([wait_for_server/2, send_goal/2, get_result/2, cancel_goal/2]).
 
 -behaviour(gen_client_listener).
 -export([on_service_reply/2]).
@@ -33,6 +36,10 @@ start_link(Node, Action, {CallbackModule, Pid}) ->
                                  action_interface = Action,
                                  callback_handler = {CallbackModule, Pid}},
                           []).
+
+destroy(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, destroy).
 
 wait_for_server(Name, Timeout) ->
     [Pid | _] = pg:get_members(Name),
@@ -97,6 +104,19 @@ init(#state{node = Node,
              feed_subscription = FeedbackSub,
              status_subscription = StatusSub}}.
 
+handle_call(destory, _, #state{request_goal_client = RequestGoalClient,
+                            cancel_goal_client = CancelGoalClient,
+                            get_result_client = GetResultClient,
+                            feed_subscription = FeedbackSub,
+                            status_subscription = StatusSub} = S) ->
+    ros_node:destroy_subscription(FeedbackSub),
+    ros_node:destroy_subscription(StatusSub),
+    ros_node:destroy_client(RequestGoalClient),
+    ros_node:destroy_client(CancelGoalClient),
+    ros_node:destroy_client(GetResultClient),
+    Pid = self(),
+    spawn(fun() -> supervisor:terminate_child(ros_action_clients_sup, Pid) end),
+    {reply, ok, S};
 handle_call({wait_for_server, Timeout}, {Caller, _}, S) ->
     self() ! {wait_for_server_loop, Caller, Timeout, now()},
     {reply, ok, S};

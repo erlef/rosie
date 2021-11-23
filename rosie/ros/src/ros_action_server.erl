@@ -1,6 +1,8 @@
 -module(ros_action_server).
+-export([start_link/3, destroy/1]).
 
--export([start_link/3, cancel_goal/2, publish_feedback/2, publish_result/3]).
+% API
+-export([cancel_goal/2, publish_feedback/2, publish_result/3]).
 
 -behaviour(gen_service_listener).
 
@@ -39,9 +41,9 @@ start_link(Node, Action, {CallbackModule, Pid}) ->
                                  callback_handler = {CallbackModule, Pid}},
                           []).
 
-% is_goal_cancel_requested(Name, Msg) ->
-%         [Pid|_] = pg:get_members(Name),
-%         gen_server:call(Pid, {is_goal_cancel_requested, Msg}).
+destroy(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, destroy).
 
 cancel_goal(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
@@ -98,6 +100,20 @@ init(#state{node = Node,
              feed_publisher = FeedbackPub,
              status_publisher = StatusPub}}.
 
+
+handle_call(destroy, _, #state{request_goal_service = RequestGoalService,
+                               cancel_goal_service = CancelGoalService,
+                               get_result_service = GetResultService,
+                               feed_publisher = FeedbackPub,
+                               status_publisher = StatusPub} = S) ->
+    ros_node:destroy_publisher(FeedbackPub),
+    ros_node:destroy_publisher(StatusPub),
+    ros_node:destroy_service(RequestGoalService),
+    ros_node:destroy_service(CancelGoalService),
+    ros_node:destroy_service(GetResultService),
+    Pid = self(),
+    spawn(fun() -> supervisor:terminate_child(ros_action_servers_sup, Pid) end),
+    {reply, ok, S};
 handle_call({publish_feedback, Feed},
             _,
             #state{action_interface = AI, feed_publisher = FeedbackPub} = S) ->
