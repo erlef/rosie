@@ -129,7 +129,8 @@ h_get_max_seq_num(#state{cache = C}) ->
 
 history_cache_test() ->
     pg:start_link(),
-    {ok, _} = rtps_history_cache:start_link(?GUID_UNKNOWN,#qos_profile{}),
+    QOS = #qos_profile{history = {?KEEP_ALL_HISTORY_QOS, -1}},
+    {ok, _} = rtps_history_cache:start_link(?GUID_UNKNOWN, QOS),
     Cache = {cache_of, ?GUID_UNKNOWN},
     SN = 10,
     Change =
