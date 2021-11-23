@@ -93,16 +93,20 @@ has_parameter(Name, ParamName) ->
     gen_server:call(Pid, {has_parameter, ParamName}).
 
 get_parameter(Name, ParamName) ->
-    [P|_] = get_parameters(Name, [ParamName]),
-    P.
+    case get_parameters(Name, [ParamName]) of
+        [P|_] -> P;
+        Error -> Error
+    end.
 
 get_parameters(Name, ParamNameList) ->
     [Pid|_] = pg:get_members(Name),
     gen_server:call(Pid, {get_parameters, ParamNameList}).
 
 set_parameter(Name, Param) ->
-    [R|_] = set_parameters(Name, [Param]),
-    R.
+    case set_parameters(Name, [Param]) of
+        [R|_] -> R;
+        Error -> Error
+    end.
 
 set_parameters(Name, ParamList) ->
     [Pid|_] = pg:get_members(Name),
@@ -284,6 +288,16 @@ handle_cast({on_topic_msg, Msg}, S) ->
     {noreply, S}.
 
 % HELPERS
+% 
+is_name_legal(N) when is_list(N) ->
+    SubNames = string:split(string:trim(N,both,"/"), "/", all),
+    lists:all(fun io_lib:printable_latin1_list/1, SubNames) and
+    lists:all(fun(S) -> 
+                {match,[{0,length(S)}]} == re:run(S,"[a-z_]+[a-z_0-9]*") 
+            end, 
+        SubNames);
+is_name_legal(_) -> false.
+
 
 extract_parameter_value(#rcl_interfaces_parameter_value{type = ?PARAMETER_NOT_SET}) ->
     none;
@@ -373,14 +387,21 @@ find_param_type(_) ->
     invalid.
 
 h_declare_parameter(ParamName, ParamValue, #state{parameters = Map} = S) ->
+    NameIsLegal = is_name_legal(ParamName),
+    NameUnavailable = lists:member(ParamName, maps:keys(Map)),
     Type = find_param_type(ParamValue),
     NewParam = {
         #rcl_interfaces_parameter_descriptor{name = ParamName, type = Type},
         build_parameter_value(ParamValue, Type)
     },
-    case Type of
-        invalid -> {invalid_type, S};
-        _ -> {{ParamName, ParamValue, Type}, S#state{parameters = Map#{ParamName => NewParam}}}
+    case {NameUnavailable,NameIsLegal,Type} of
+        {true,_,_} -> {{error, parameter_already_declared}, S};
+        {_,false,_} -> {{error, invalid_name}, S};
+        {_,_,invalid} -> {{error, invalid_type}, S};
+        {false, true, ?PARAMETER_NOT_SET} -> {#ros_parameter{name = ParamName, value=none, type=Type}, 
+                S#state{parameters = Map#{ParamName => NewParam}}};
+        _ -> {#ros_parameter{name = ParamName, value=ParamValue, type=Type}, 
+                S#state{parameters = Map#{ParamName => NewParam}}}
     end.
 
 h_undeclare_parameter(ParamName, #state{parameters = Map} = S) ->
@@ -388,12 +409,12 @@ h_undeclare_parameter(ParamName, #state{parameters = Map} = S) ->
         true ->
             case maps:get(ParamName, Map) of
                 {#rcl_interfaces_parameter_descriptor{read_only = true}, _} ->
-                    {parameter_immutable, S};
+                    {{error, parameter_immutable}, S};
                 _ ->
                     {ok, S#state{parameters = maps:remove(ParamName, Map)}}
             end;
         false ->
-            {parameter_not_declared, S}
+            {{error, parameter_not_declared}, S}
     end.
 
 param_type_is_unset({Desc,Value}) ->
@@ -411,20 +432,26 @@ h_get_parameters(ParamNameList, #state{options =
                     parameters=P}) -> 
     Parameters = get_parameters_from_map(ParamNameList,P),
     case not ALLOW_UNDECLARED and lists:any(fun param_type_is_unset/1, Parameters) of 
-        true -> parameter_not_declared_exception;
+        true -> {error, parameter_not_declared};
         false -> lists:map(fun simplified_parameter_view/1, Parameters)
     end.
 
 set_parameter_in_map( #ros_parameter{name = N , value = V, type = T}, 
         #state{ options = #ros_node_options{allow_undeclared_parameters = ALLOW_UNDECLARED},
                 parameters = Pmap}= S) -> 
-    case lists:member(N, maps:keys(Pmap)) of
-        true -> {Desc,_} = maps:get(N,Pmap),
+    ParamIsDeclared = lists:member(N, maps:keys(Pmap)),
+    ParamIsCoherent = find_param_type(V) == T,
+    {#rcl_interfaces_parameter_descriptor{type =OldParamType},_} = maps:get(N,Pmap, {#rcl_interfaces_parameter_descriptor{},#rcl_interfaces_parameter_value{}}),
+    case {ParamIsDeclared, ParamIsCoherent, T, OldParamType} of
+        {true, _, ?PARAMETER_NOT_SET, ?PARAMETER_NOT_SET} -> Pmap;
+        {true, _, ?PARAMETER_NOT_SET, OLD_T} when OLD_T/= ?PARAMETER_NOT_SET -> maps:remove(N, Pmap);
+        {_, false,_,_} -> parameter_value;
+        {true,true,_,_} -> {Desc,_} = maps:get(N,Pmap),
                 maps:put(N, {Desc#rcl_interfaces_parameter_descriptor{type = T}, 
                             build_parameter_value(V, T)},
                             Pmap);
-        false -> case ALLOW_UNDECLARED of
-                    true -> NewS = h_declare_parameter(N, V, S), 
+        {false,true,_,_} -> case ALLOW_UNDECLARED of
+                    true -> {_, NewS} = h_declare_parameter(N, V, S), 
                             NewS#state.parameters;
                     false -> undeclared
                 end
@@ -437,9 +464,12 @@ h_set_parameters([], Results, S) ->
     {Results, S};
 h_set_parameters([Param|TL], Results, S) ->
     case set_parameter_in_map(Param, S) of
-        undeclared ->  {parameter_not_declared_exception, S};
-        failed ->  h_set_parameters(TL, [ failed | Results], S);
-        NewP when is_map(NewP) -> h_set_parameters(TL, [ success | Results], S#state{parameters = NewP})
+        undeclared ->  
+            {{error, parameter_not_declared}, S};
+        NewP when is_map(NewP) -> 
+            h_set_parameters(TL, [ success | Results], S#state{parameters = NewP});
+        SoftFailure ->  
+            h_set_parameters(TL, [ {failure, SoftFailure} | Results], S)
     end.
 
 h_describe_parameters(ParamNameList, #state{
@@ -447,7 +477,7 @@ h_describe_parameters(ParamNameList, #state{
                 parameters=P} = S) ->
     Parameters = get_parameters_from_map(ParamNameList,P),
     case not ALLOW_UNDECLARED and lists:any(fun param_type_is_unset/1, Parameters) of 
-        true -> parameter_not_declared_exception;
+        true -> {error, parameter_not_declared};
         false -> [ D || {D,V} <- Parameters]
     end.
 
@@ -482,10 +512,10 @@ h_set_descriptor( ParamName, NewDescriptor, AltVal, #state{
     AltValType = find_param_type(AltVal),
     AltValTypeMatchesDescriptionType = (NewDescriptor#rcl_interfaces_parameter_descriptor.type == AltValType) and (AltValType /= invalid),
     case {ParamDeclared, IsOldParamReadOnly, OldValCompatibleWithNewDesc, AltValTypeMatchesDescriptionType, ALLOW_UNDECLARED, AltVal}   of
-        {true,true,_,_,_,_} ->  {parameter_read_only_exception, S};
-        {false,_,_,_,false,_} ->  {parameter_not_declared_exception, S};
-        {_,_,false,_,_,none} ->  {parameter_value_exception, S};
-        {_,_,_,false,_,AltVal} when AltVal /= none->  {parameter_value_exception, S};
+        {true,true,_,_,_,_} ->  {{error, parameter_read_only}, S};
+        {false,_,_,_,false,_} ->  {{ error, parameter_not_declared}, S};
+        {_,_,false,_,_,none} ->  {{error, parameter_value}, S};
+        {_,_,_,false,_,AltVal} when AltVal /= none->  {{error, parameter_value}, S};
         {true,false,true,_,_,none} -> update_existing_param_desc(ParamName, NewDescriptor, S);
         {true,false,_,true,_,AltVal} -> update_existing_param_desc_and_val(ParamName, NewDescriptor, AltVal, S);
         {false,_,_,_,true,none} -> implicit_declare_param_with_desc(ParamName, NewDescriptor, S);

@@ -32,8 +32,8 @@ start_link() ->
 create_node(Name) ->
     gen_server:call(?ROS_CONTEXT, {create_node, Name, #ros_node_options{}}).
 
-create_node(Name, OptionMap) ->
-    gen_server:call(?ROS_CONTEXT, {create_node, Name, OptionMap}).
+create_node(Name, OptionRecord) ->
+    gen_server:call(?ROS_CONTEXT, {create_node, Name, OptionRecord}).
 
 create_action_client(Node, ActionInterface, CallbackHandler) ->
     gen_server:call(?ROS_CONTEXT,
