@@ -11,7 +11,7 @@
 -export([on_topic_msg/2]).
 
 -behaviour(gen_server).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([init/1, terminate/2, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("action_msgs/src/_rosie/action_msgs_goal_status_array_msg.hrl").
 -include_lib("action_msgs/src/_rosie/action_msgs_cancel_goal_srv.hrl").
@@ -39,7 +39,7 @@ start_link(Node, Action, {CallbackModule, Pid}) ->
 
 destroy(Name) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:call(Pid, destroy).
+    gen_server:stop(Pid).
 
 wait_for_server(Name, Timeout) ->
     [Pid | _] = pg:get_members(Name),
@@ -104,7 +104,7 @@ init(#state{node = Node,
              feed_subscription = FeedbackSub,
              status_subscription = StatusSub}}.
 
-handle_call(destory, _, #state{request_goal_client = RequestGoalClient,
+terminate( _, #state{request_goal_client = RequestGoalClient,
                             cancel_goal_client = CancelGoalClient,
                             get_result_client = GetResultClient,
                             feed_subscription = FeedbackSub,
@@ -114,9 +114,8 @@ handle_call(destory, _, #state{request_goal_client = RequestGoalClient,
     ros_node:destroy_client(RequestGoalClient),
     ros_node:destroy_client(CancelGoalClient),
     ros_node:destroy_client(GetResultClient),
-    Pid = self(),
-    spawn(fun() -> supervisor:terminate_child(ros_action_clients_sup, Pid) end),
-    {reply, ok, S};
+    ok.
+
 handle_call({wait_for_server, Timeout}, {Caller, _}, S) ->
     self() ! {wait_for_server_loop, Caller, Timeout, now()},
     {reply, ok, S};

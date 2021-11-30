@@ -29,7 +29,7 @@ init([]) ->
     Node =
         [#{id => ros_node,
            start => {ros_node, start_link, []},
-           restart => permanent,
+           restart => transient,
            shutdown => 5000,
            type => supervisor}],
 

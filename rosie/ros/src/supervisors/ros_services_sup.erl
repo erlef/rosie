@@ -18,7 +18,7 @@ init([]) ->
 
     Cfg = [#{id => ros_service,
              start => {ros_service, start_link, []},
-             restart => permanent,
+             restart => transient,
              shutdown => 5000,
              type => worker}],
 

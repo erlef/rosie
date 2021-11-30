@@ -43,7 +43,7 @@
 -export([get_all_dds_entities/1]).
 
 -behaviour(gen_server).
--export([init/1, handle_call/3, handle_cast/2]).
+-export([init/1, handle_call/3, handle_cast/2, terminate/2]).
 
 -include_lib("ros/include/ros_commons.hrl").
 -include_lib("dds/include/dds_types.hrl").
@@ -81,7 +81,7 @@ start_link(Name, OptionRecord) ->
 
 destroy(Name) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:call(Pid, destroy).
+    gen_server:stop(Pid).
 
 get_name(Name) ->
     [Pid | _] = pg:get_members(Name),
@@ -231,7 +231,7 @@ init(
     }}.
 
 
-handle_call(destroy, _, #state{name= N,
+terminate(_, #state{name= N,
                                 subscriptions = Subscriptions,
                                 publishers = Publishers,
                                 clients = Clients,
@@ -240,9 +240,8 @@ handle_call(destroy, _, #state{name= N,
     [ros_publisher:destroy(P) || P <- Publishers],
     [ros_client:destroy(C) || C <- Clients],
     [ros_service:destroy(Serv) || Serv <- Services],
-    Pid = self(),
-    spawn(fun() -> supervisor:terminate_child(ros_node_sup, Pid) end),
-    {reply, ok, S};
+    ok.
+
 handle_call({declare_parameter, ParamName, ParamValue}, _, S) ->
     {Result, NewS} = h_declare_parameter(ParamName, ParamValue, S),
     {reply, Result, NewS};

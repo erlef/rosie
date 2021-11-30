@@ -10,7 +10,7 @@
 
 -behaviour(gen_server).
 
--export([init/1, handle_call/3, handle_cast/2]).
+-export([init/1, terminate/2, handle_call/3, handle_cast/2]).
 
 -include_lib("dds/include/dds_types.hrl").
 -include_lib("action_msgs/src/_rosie/action_msgs_goal_status_array_msg.hrl").
@@ -43,7 +43,7 @@ start_link(Node, Action, {CallbackModule, Pid}) ->
 
 destroy(Name) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:call(Pid, destroy).
+    gen_server:stop(Pid).
 
 cancel_goal(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
@@ -101,7 +101,7 @@ init(#state{node = Node,
              status_publisher = StatusPub}}.
 
 
-handle_call(destroy, _, #state{request_goal_service = RequestGoalService,
+terminate( _, #state{request_goal_service = RequestGoalService,
                                cancel_goal_service = CancelGoalService,
                                get_result_service = GetResultService,
                                feed_publisher = FeedbackPub,
@@ -111,9 +111,8 @@ handle_call(destroy, _, #state{request_goal_service = RequestGoalService,
     ros_node:destroy_service(RequestGoalService),
     ros_node:destroy_service(CancelGoalService),
     ros_node:destroy_service(GetResultService),
-    Pid = self(),
-    spawn(fun() -> supervisor:terminate_child(ros_action_servers_sup, Pid) end),
-    {reply, ok, S};
+    ok.
+
 handle_call({publish_feedback, Feed},
             _,
             #state{action_interface = AI, feed_publisher = FeedbackPub} = S) ->

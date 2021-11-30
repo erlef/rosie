@@ -3,7 +3,7 @@
 -export([start_link/4, start_link/5, destroy/1]).
 
 -behaviour(gen_server).
--export([init/1, handle_call/3, handle_cast/2]).
+-export([init/1, terminate/2, handle_call/3, handle_cast/2]).
 
 -behaviour(gen_dds_entity_owner).
 -export([get_all_dds_entities/1]).
@@ -47,7 +47,7 @@ start_link(MsgModule, Node, TopicName, CallbackHandler) ->
                           []).
 destroy(Name) ->
     [Pid | _] = pg:get_members(Name),
-    gen_server:call(Pid, destroy).
+    gen_server:stop(Pid).
 
 get_all_dds_entities(Name) ->
     [Pid | _] = pg:get_members(Name),
@@ -68,11 +68,11 @@ init(#state{node = Node,
     DR = dds_subscriber:create_datareader(SUB, Topic),
     dds_data_r:set_listener(DR, {?MODULE, Subscription}),
     {ok, S#state{dds_data_reader = DR}}.
-handle_call(destroy, _, #state{} = S) ->
+
+terminate(_, #state{} = S) ->
     io:format("subscription destroyed\n"),
-    Pid = self(),
-    spawn(fun() -> supervisor:terminate_child(ros_subscriptions_sup, Pid) end),
-    {reply, ok, S};
+    ok.
+
 handle_call(get_all_dds_entities, _, #state{dds_data_reader= DR}=S) ->
     {reply, {[],[DR]}, S}.
 

@@ -30,7 +30,7 @@ init([]) ->
     ChildSpecs =
         [#{id => dds_endpoint_sup,
            start => {dds_endpoint_sup, start_link, []},
-           restart => permanent,
+           restart => transient,
            shutdown => 5000,
            type => supervisor}],
 

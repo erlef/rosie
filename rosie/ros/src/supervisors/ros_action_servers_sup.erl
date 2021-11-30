@@ -19,7 +19,7 @@ init([]) ->
     Actionclient =
         [#{id => ros_action_server,
            start => {ros_action_server, start_link, []},
-           restart => permanent,
+           restart => transient,
            shutdown => 5000,
            type => worker}],
 
