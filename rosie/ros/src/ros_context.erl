@@ -112,6 +112,7 @@ handle_call({destroy_node, Name}, _, #state{ros_nodes=NODES} = S) ->
     [ros_action_client:destroy(C) || C <- AC],
     [ros_action_server:destroy(S) || S <- AS],
     ros_node:destroy(Name),
+    ros_context:update_ros_discovery(),
     {reply, ok, S#state{ros_nodes = maps:remove(Name, NODES) } };
 handle_call({create_action_client, Node, ActionInterface, CallbackHandler}, _, S) ->
     {reply, h_create_action_client(Node, ActionInterface, CallbackHandler), S};

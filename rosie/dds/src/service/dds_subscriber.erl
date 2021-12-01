@@ -2,7 +2,11 @@
 
 
 
--export([start_link/0, get_all_data_readers/1, create_datareader/2, lookup_datareader/2,
+-export([start_link/0, 
+        get_all_data_readers/1, 
+        create_datareader/2, 
+        lookup_datareader/2,
+        delete_datareader/2,
         dispose_data_readers/1]). %set_subscription_publisher/2,
 
 -behaviour(gen_data_reader_listener).
@@ -20,7 +24,7 @@
          builtin_pub_detector,
          builtin_sub_detector,
          builtin_msg_reader,
-         data_readers = [],
+         data_readers = #{}, % { data_r_of, #guid{} } => {SupervisorPid, #dds_user_topic{}}
          incremental_key = 1}).
 
 start_link() ->
@@ -36,6 +40,10 @@ create_datareader(Name, Topic) ->
 lookup_datareader(Name, Topic) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:call(Pid, {lookup_datareader, Topic}).
+
+delete_datareader(Name, ReaderName) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, {delete_datareader, ReaderName}).
 
 get_all_data_readers(Name) ->
     [Pid | _] = pg:get_members(Name),
@@ -110,7 +118,7 @@ handle_call({create_datareader, Topic},
     EntityID = #entityId{kind = ?EKIND_USER_Reader_NO_Key, key = <<K:24>>},
     GUID = #guId{prefix = P_info#participant.guid#guId.prefix, entityId = EntityID},
     Config = #endPoint{guid = GUID},
-    {ok, _} =
+    {ok, SupervisorPid} =
         supervisor:start_child(dds_datareaders_pool_sup, [{data_reader, Topic, P_info, Config}]),
 
     match_with_discovered_writers({data_r_of, GUID}, Topic, S),
@@ -121,44 +129,49 @@ handle_call({create_datareader, Topic},
     dds_data_w:write(SubAnnouncer, produce_sedp_disc_enpoint_data(P_info, Topic, EntityID)),
     {reply,
      {data_r_of, GUID},
-     S#state{data_readers = Readers ++ [{EntityID, Topic, {data_r_of, GUID}}],
+     S#state{data_readers = Readers#{ {data_r_of, GUID} => {SupervisorPid, Topic} },
              incremental_key = K + 1}};
 handle_call({lookup_datareader, builtin_pub_detector}, _, State) ->
     {reply, State#state.builtin_pub_detector, State};
 handle_call({lookup_datareader, builtin_sub_detector}, _, State) ->
     {reply, State#state.builtin_sub_detector, State};
-handle_call({lookup_datareader, Topic}, _, #state{data_readers = DR} = State) ->
-    [R | _] = [Name || {_, T, Name} <- DR, T == Topic],
-    {reply, R, State};
-handle_call(get_all_data_readers, _, State) ->
-    {reply, State#state.data_readers, State};
-handle_call(dispose_data_readers,
-            _,
-            #state{rtps_participant_info = P_info, data_readers = DR} = State) ->
+handle_call({lookup_datareader, Topic}, _, #state{data_readers = DR} = S) ->
+    [R | _] = [ R || {R,{_,T}} <- maps:to_list(DR), T == Topic],
+    {reply, R, S};
+handle_call({delete_datareader, {_,GUID} = Reader}, _, #state{rtps_participant_info = P_info, 
+                                                            data_readers = DR} = S) ->
+    Sub_announcer = dds_publisher:lookup_datawriter(dds_default_publisher, builtin_sub_announcer),                                                            
+    dds_data_w:write(Sub_announcer, produce_sedp_endpoint_leaving(P_info, GUID#guId.entityId)),
+    {SupervisorPid, _} = maps:get(Reader,DR),
+    supervisor:terminate_child(dds_datareaders_pool_sup, SupervisorPid),
+    {reply, ok, S#state{data_readers = maps:remove(Reader,DR)}};
+handle_call(get_all_data_readers, _, #state{data_readers = DR} = S) ->
+    {reply, maps:keys(DR), S};
+handle_call(dispose_data_readers, _, #state{rtps_participant_info = P_info, data_readers = DR} = S) ->
     Sub_announcer =
         dds_publisher:lookup_datawriter(dds_default_publisher, builtin_sub_announcer),
     [dds_data_w:write(Sub_announcer, produce_sedp_endpoint_leaving(P_info, ID))
-     || {ID, _, _} <- DR],
+     || {_, #guId{entityId = ID}} <- maps:keys(DR)],
     dds_data_w:flush_all_changes(Sub_announcer),
-    {reply, ok, State#state{data_readers = []}};
+    {reply, ok, S#state{data_readers = #{}} };
 handle_call(_, _, State) ->
     {reply, ok, State}.
 
 handle_cast({on_data_available, {R, ChangeKey}}, #state{data_readers = DR} = S) ->
-    Change =
-        dds_data_r:read(R,
-                        ChangeKey), % io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
-    Data =
-        Change#cacheChange.data, % io:format("~p\n",[Data#sedp_disc_endpoint_data.status_qos]),
+    Change = dds_data_r:read(R, ChangeKey), 
+    % io:format("DDS: change: ~p, with key: ~p\n", [Change,ChangeKey]),
+    Data = Change#cacheChange.data, 
+    % io:format("~p\n",[Data#sedp_disc_endpoint_data.status_qos]),
     case ?ENDPOINT_LEAVING(Data#sedp_disc_endpoint_data.status_qos) of
         true ->
-            [dds_data_r:remote_writer_remove(Name, Data#sedp_disc_endpoint_data.endpointGuid)
-             || {_, T, Name} <- DR];
+            [dds_data_r:remote_writer_remove(R, Data#sedp_disc_endpoint_data.endpointGuid)
+             || R <- maps:keys(DR)];
         _ ->
             ToBeMatched =
-                [Name
-                 || {_, T, Name} <- DR,
-                    T#dds_user_topic.name == Data#sedp_disc_endpoint_data.topic_name],
+                [R
+                 || {R,{_,T}} <- maps:to_list(DR),
+                    (T#dds_user_topic.name == Data#sedp_disc_endpoint_data.topic_name) and 
+                    (T#dds_user_topic.type_name ==  Data#sedp_disc_endpoint_data.topic_type)],
             %io:format("DDS: discovered publisher of topic: ~p\n", [Data#sedp_disc_endpoint_data.topic_name]),
             %io:format("DDS: i have theese topics: ~p\n", [[ T || {_,T,_} <- DR]]),
             %io:format("DDS: interested readers are: ~p\n", [ToBeMatched]),
@@ -204,7 +217,7 @@ match_with_discovered_writers(DR,
     RemoteWriters = [D || #cacheChange{data = D} <- dds_data_r:read_all(PubDetector)],
     %io:format("Remote writers for topic ~p are ~p\n",[Tname,RemoteWriters]),
     ToBeMatched =
-        [W || #sedp_disc_endpoint_data{topic_name = N} = W <- RemoteWriters, N == Tname],
+        [W || #sedp_disc_endpoint_data{topic_name = N, topic_type = T} = W <- RemoteWriters, (N == Tname) and (T == Ttype)],
     Participants = rtps_participant:get_discovered_participants(participant),
     [match_reader_with_writer(DR, W, Participants) || W <- ToBeMatched].
 

@@ -294,15 +294,19 @@ handle_call({create_service, Service, QoSProfile, CallbackHandler}, _, #state{se
     {reply, ID, S#state{services = [ID | SRVs]}};
 handle_call({destroy_subscription, Sub}, _, #state{subscriptions = Subscriptions} = S) ->
     ros_subscription:destroy(Sub),
+    ros_context:update_ros_discovery(),
     {reply, ok, S#state{subscriptions = [ S || S <- Subscriptions, S /=  Sub]}};
 handle_call({destroy_publisher, Pub}, _, #state{publishers = Publishers} = S) ->
     ros_publication:destroy(Pub),
+    ros_context:update_ros_discovery(),
     {reply, ok, S#state{publishers = [ P || P <- Publishers, P /=  Pub]}};
 handle_call({destroy_client, Client}, _, #state{clients = Clients} = S) ->
     ros_client:destroy(Client),
+    ros_context:update_ros_discovery(),
     {reply, ok, S#state{clients = [ C || C <- Clients, C /=  Client]}};
 handle_call({destroy_service, Service}, _, #state{services = Services} = S) ->
     ros_service:destroy(Service),
+    ros_context:update_ros_discovery(),
     {reply, ok, S#state{services = [ S || S <- Services, S /=  Service]}};
 handle_call(get_name, _, #state{name = N} = S) ->
     {reply, N, S};

@@ -17,10 +17,11 @@ start_link() ->
 
 init(_) ->
     Node = ros_context:create_node("parameter_test"),
-    
+
     OtherNode = ros_context:create_node("second_node"),
 
     ok = ros_context:destroy_node(OtherNode),
+    
     {ok, #state{ros_node = Node}}.
 
 handle_call(_, _, S) ->

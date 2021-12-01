@@ -69,8 +69,9 @@ init(#state{node = Node,
     dds_data_r:set_listener(DR, {?MODULE, Subscription}),
     {ok, S#state{dds_data_reader = DR}}.
 
-terminate(_, #state{} = S) ->
-    io:format("subscription destroyed\n"),
+terminate(_, #state{dds_data_reader = DR} = S) ->
+    Sub = dds_domain_participant:get_default_subscriber(dds),
+    dds_subscriber:delete_datareader(Sub, DR),
     ok.
 
 handle_call(get_all_dds_entities, _, #state{dds_data_reader= DR}=S) ->

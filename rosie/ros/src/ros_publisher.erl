@@ -60,8 +60,9 @@ init(#state{ node = Node,
     DW = dds_publisher:create_datawriter(Pub, Topic),
     {ok, S#state{dds_data_writer = DW}}.
 
-terminate(_, #state{} = S) ->
-    io:format("publisher destroyed\n"),
+terminate(_, #state{dds_data_writer = DW} = S) ->
+    Pub = dds_domain_participant:get_default_publisher(dds),
+    dds_publisher:delete_datawriter(Pub, DW),
     ok.
 
 handle_call(get_all_dds_entities, _, #state{dds_data_writer= DW}=S) ->
