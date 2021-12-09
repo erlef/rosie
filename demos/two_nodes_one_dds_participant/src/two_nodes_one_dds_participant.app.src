@@ -1,0 +1,15 @@
+{application, two_nodes_one_dds_participant,
+ [{description, "Examples of the parameter API"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {two_nodes_one_dds_participant_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

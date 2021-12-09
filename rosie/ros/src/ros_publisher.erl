@@ -1,5 +1,13 @@
 -module(ros_publisher).
--export([start_link/4, start_link/3, publish/2, destroy/1]).
+
+% API
+-export([ 
+    publish/2,
+    get_subscription_count/1
+]).
+
+% Internal use
+-export([start_link/4, start_link/3, destroy/1]).
 
 -behaviour(gen_server).
 -export([init/1, terminate/2, handle_call/3, handle_cast/2]).
@@ -51,6 +59,10 @@ publish(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {publish, Msg}).
 
+get_subscription_count(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, get_subscription_count).
+
 %callbacks
 %
 init(#state{ node = Node, 
@@ -65,6 +77,9 @@ terminate(_, #state{dds_data_writer = DW} = S) ->
     dds_publisher:delete_datawriter(Pub, DW),
     ok.
 
+    
+handle_call(get_subscription_count, _, #state{dds_data_writer= DW}=S) ->    
+    {reply, length(dds_data_w:get_matched_subscriptions(DW)), S};
 handle_call(get_all_dds_entities, _, #state{dds_data_writer= DW}=S) ->
     {reply, {[DW],[]}, S}.
 

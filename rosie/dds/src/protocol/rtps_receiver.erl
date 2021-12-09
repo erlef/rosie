@@ -244,13 +244,17 @@ analize(GuidPrefix, Packet, {Ip, Port}) ->
                              port = ?LOCATOR_PORT_INVALID}],
                haveTimestamp = false,
                timestamp = ?TIME_INVALID},
-    % do not interpret possible loopback messages
-    case GuidPrefix /= SourceGuidPrefix of
-        true ->
-            sub_msg_parsing_loop(State, PayLoad);
-        false ->
-            ok
-    end.
+    % 
+    sub_msg_parsing_loop(State, PayLoad).
+    % or
+    % do not interpret possible loopback messages:
+    % NOTE: This forbids communications between endpoints of the same dds participant
+    % case GuidPrefix /= SourceGuidPrefix of
+    %     true ->
+    %         sub_msg_parsing_loop(State, PayLoad);
+    %     false ->
+    %         ok
+    %end.
 
 % API
 start_link() ->

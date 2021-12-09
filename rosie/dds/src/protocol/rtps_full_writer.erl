@@ -18,16 +18,6 @@
 -record(state,
         {participant = #participant{},
          entity = #endPoint{},
-         % TL;DR -> default periods are too slow and may cause the protocol in a remote reader to ignore the first message in the cache.
-         %
-         % default periods can be divided to both speedup data exchange and prevent some annoing things as example:
-         % If the heartbeat period is too slow the instance could add a sample before the first heartbeat is produced( with fisrtSN=1,lastSN=0),
-         % in some applications (other DDS vendors) this leads to them ignoring the first data sample added in the history cache.
-         % This is particularly problematic if the remote is a ros2 client that blocks if does not receive the correct sample.
-         %
-         % This happens because the remote reader of cyclone DDS only evaluates data msg if they where requested with an acknack with final_flag,
-         % The only solution for now is to let our writer to send the heartbit to signal an empty cache,
-         % otherwise the remote reader implementation will ignore the first sample, and will straight up request the second.
          datawrite_period = ?DEFAULT_WRITE_PERIOD div 10, % default at 1000
          heatbeat_period = ?DEFAULT_HEARTBEAT_PERIOD div 10, % default at 1000
          nackResponseDelay = ?DEFAULT_NACK_RESPONCE_DELAY div 10, % default at 200
