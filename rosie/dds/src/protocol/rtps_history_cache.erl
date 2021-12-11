@@ -69,21 +69,25 @@ handle_call(get_all_changes, _, State) ->
 handle_cast({set_listener, L}, State) ->
     {noreply, State#state{listener = L}}.
 
-discard_samples(C, Depth) ->
+discard_samples(C, Depth, Listener) ->
     SequenceNumbers = [ SN || {_,SN} <- maps:keys(C)],
     MaxSN = case length(SequenceNumbers) > 0 of true -> lists:max(SequenceNumbers); _ -> 0 end,
     Treshold = MaxSN - Depth,
     TO_BE_REMOVED = [ KEY || {_,SN} = KEY <- maps:keys(C), SN =< Treshold],
+    case Listener of 
+        {Module, ID} -> [Module:on_change_removed(ID, K) || K <- TO_BE_REMOVED];
+        _ -> ok
+    end,
     maps:without(TO_BE_REMOVED, C).
 
 %CALL_BACK HELPERS
-h_add_change(#state{cache = C, qos_profile = #qos_profile{history = H}} = State, Change) ->
+h_add_change(#state{cache = C, listener = L, qos_profile = #qos_profile{history = H}} = State, Change) ->
     CacheSize = maps:size(C),
     CacheReady = 
     case H of
         {?KEEP_LAST_HISTORY_QOS, Depth} when CacheSize >= Depth -> 
-            %io:format("Discarding...\n"),
-            discard_samples(C, Depth);
+            % io:format("Discarding...\n"),
+            discard_samples(C, Depth, L);
         _ -> C
     end,
     State#state{cache = CacheReady#{{Change#cacheChange.writerGuid, Change#cacheChange.sequenceNumber} =>
