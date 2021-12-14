@@ -168,10 +168,11 @@ send_selected_changes(RequestedKeys,
                                     unicastLocatorList = [L | _],
                                     changes_for_reader = CR}) ->
     ToSend = [rtps_history_cache:get_change(HC, K) || K <- RequestedKeys],
+    ValidToSend = [C || C <- ToSend, C /= not_found],
     [G | _] = pg:get_members(rtps_gateway),
     SUB_MSG =
         [rtps_messages:serialize_info_timestamp()]
-        ++ [rtps_messages:serialize_data(RID, C) || C <- ToSend],
+        ++ [rtps_messages:serialize_data(RID, C) || C <- ValidToSend],
     Msg = rtps_messages:build_message(Prefix, SUB_MSG),
     rtps_gateway:send(G, {Msg, {L#locator.ip, L#locator.port}}),
 
