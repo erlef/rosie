@@ -28,6 +28,16 @@
 % status can be:
 % LOST, MISSING, RECEIVED, UNKNOWN
 
+-record(gap,
+        {writerGUID = #guId{},
+         readerGUID = #guId{},
+         sn_set}).
+-record(acknack,
+        {writerGUID = #guId{}, 
+        readerGUID = #guId{}, 
+        final_flag, 
+        sn_range, 
+        count}).
 -record(heartbeat,
         {writerGUID = #guId{},
          min_sn,
@@ -35,8 +45,6 @@
          final_flag = not_set,
          readerGUID = #guId{},
          count}).
--record(acknack,
-        {writerGUID = #guId{}, readerGUID = #guId{}, final_flag, sn_range, count}).
 -record(reader_proxy,
         {guid,
          ready= false,

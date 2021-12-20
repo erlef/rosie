@@ -146,6 +146,12 @@ handle_heartbeat(#state{sourceGuidPrefix = SRC, destGuidPrefix = DST},
      H#heartbeat{writerGUID = #guId{prefix = SRC, entityId = WID},
                  readerGUID = #guId{prefix = DST, entityId = RID}}}.
 
+handle_gap(#state{sourceGuidPrefix = SRC, destGuidPrefix = DST},
+               #gap{writerGUID = #guId{entityId = WID}, readerGUID = #guId{entityId = RID}} = G) ->
+    {gap,
+     G#gap{writerGUID = #guId{prefix = SRC, entityId = WID},
+               readerGUID = #guId{prefix = DST, entityId = RID}}}.
+
 change_receiver_state_for(?SUB_MSG_KIND_INFO_TS, _, State) ->
     State;
 change_receiver_state_for(?SUB_MSG_KIND_INFO_DST, _, State) ->
@@ -163,6 +169,8 @@ process_entity_sub_msg(?SUB_MSG_KIND_ACKNACK, {Flags, Body}, S) ->
     handle_acknack(S, rtps_messages:parse_acknack(Flags, Body));
 process_entity_sub_msg(?SUB_MSG_KIND_HEARTBEAT, {Flags, Body}, S) ->
     handle_heartbeat(S, rtps_messages:parse_heartbeat(Flags, Body));
+process_entity_sub_msg(?SUB_MSG_KIND_GAP, {Flags, Body}, S) ->
+    handle_gap(S, rtps_messages:parse_gap(Flags, Body));
 process_entity_sub_msg(?SUB_MSG_KIND_PAD, {Flags, Body}, _) ->
     not_managed;
 process_entity_sub_msg(_, _, _) ->
@@ -193,6 +201,9 @@ send_data_to_reader(State, {DstEntityID, SrcEntityID, SN, Data}) ->
                                    SN,
                                    Data}).
 
+send_gap_to_reader(State, #gap{readerGUID = R_GUID} = GAP) ->
+    rtps_full_reader:receive_gap(R_GUID#guId{prefix = State#state.destGuidPrefix}, GAP).
+
 send_acknack_to_writer(State, #acknack{writerGUID = W} = A) ->
     rtps_full_writer:receive_acknack(W, A).
 
@@ -218,6 +229,8 @@ sub_msg_parsing_loop(State, PayLoad) ->
             ok;
         {data, D} ->
             send_data_to_reader(State, D);
+        {gap, G} ->
+            send_gap_to_reader(State, G);
         {heartbeat, H} ->
             send_heartbit_to_reader(State, H);
         {acknack, A} ->

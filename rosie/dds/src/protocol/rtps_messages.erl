@@ -2,7 +2,7 @@
 
 -export([header/1, build_message/2, serialize_sub_header/1, serialize_info_dst/1,
          serialize_info_timestamp/0, is_rtps_packet/1, parse_rtps_header/1, parse_submsg_header/1,
-         parse_data/2, parse_heartbeat/2, parse_acknack/2, parse_param_list/1, serialize_data/2,
+         parse_data/2, parse_heartbeat/2, parse_acknack/2, parse_gap/2, parse_param_list/1, serialize_data/2,
          serialize_heatbeat/1, serialize_acknack/1]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -596,11 +596,9 @@ parse_acknack(<<_:6, Final:1, _:1>>,
                 _:32,
                 BitMapBase:32/little,
                 NumBits:32/little,
-                BitMap_and_count/binary>>)
-    when NumBits - BitMapBase =< 250 ->
+                BitMap_and_count/binary>>) when NumBits - BitMapBase =< 250 ->
     BITMAP_LENGTH = 32 * (NumBits div 32 + 1),
     <<Set:BITMAP_LENGTH/big, Count:32/little>> = BitMap_and_count,
-
     #acknack{writerGUID = #guId{entityId = #entityId{key = WriterID, kind = WriterKind}},
              readerGUID = #guId{entityId = #entityId{key = ReaderID, kind = ReaderKind}},
              final_flag = Final,
@@ -610,6 +608,28 @@ parse_acknack(<<_:6, Final:1, _:1>>,
                                 BITMAP_LENGTH,
                                 lists:seq(BitMapBase, BitMapBase + NumBits)),
              count = Count}.
+
+parse_gap(<<_:7, 1:1>>,
+            <<ReaderID:3/binary,
+                ReaderKind:8,
+                WriterID:3/binary,
+                WriterKind:8,                
+                _:32,
+                GapStart:32/little,
+                _:32,
+                BitMapBase:32/little,
+                NumBits:32/little,
+                BitMap/binary>>) when NumBits - BitMapBase =< 250 ->
+        BITMAP_LENGTH = 32 * (NumBits div 32 + 1),
+        <<NumSet:BITMAP_LENGTH/big>> = BitMap,
+        #gap{
+            writerGUID = #guId{entityId = #entityId{key = WriterID, kind = WriterKind}},
+            readerGUID = #guId{entityId = #entityId{key = ReaderID, kind = ReaderKind}},
+            sn_set = lists:seq(GapStart, BitMapBase-1) ++ filter_by_bits(BitMapBase, 
+                                    NumSet,
+                                    BITMAP_LENGTH,
+                                    lists:seq(BitMapBase, BitMapBase + NumBits))
+        }.
 
 filter_by_bits(Base, NumSet, BITMAP_LENGTH, List) ->
     [N || N <- List, 0 /= NumSet band gen_bitmask(Base, BITMAP_LENGTH, N)].
@@ -634,6 +654,14 @@ parse_heartbeat(<<_:6, Final:1, _:1>>,
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
+
+gap_parsing_test() ->
+    GAP = parse_gap(<<0:7, 1:1>>, <<0,0,4,199,0,0,4,194,0,0,0,0,10,0,0,0,0,0,0,0,12,0,0,0,8,0,0,0,0,0,0,105>>),
+    io:format("~p\n",[GAP]),
+    ?assertMatch(GAP, #gap{writerGUID = #guId{entityId = #entityId{key= <<0,0,4>>,kind= 194}},
+                            readerGUID = #guId{entityId = #entityId{key= <<0,0,4>>,kind= 199}},
+                            sn_set = [10,11,13,14,16,19]}).
+
 
 heartbit_single_test() ->
     HB = #heartbeat{writerGUID = #guId{entityId = ?ENTITYID_UNKNOWN},

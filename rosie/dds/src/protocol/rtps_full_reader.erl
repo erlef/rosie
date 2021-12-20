@@ -4,7 +4,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1, matched_writer_add/2, matched_writer_remove/2,
-         update_matched_writers/2, receive_data/2, get_cache/1, receive_heartbeat/2]).
+         update_matched_writers/2, receive_data/2,  receive_gap/2, get_cache/1, receive_heartbeat/2]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -14,7 +14,7 @@
          entity = #endPoint{},
          history_cache,
          writer_proxies = [],
-         heartbeatResponseDelay = 10, %default should be 500
+         heartbeatResponseDelay = 20, %default should be 500
          heartbeatSuppressionDuration = 0,
          acknack_count = 0}).
 
@@ -51,6 +51,10 @@ receive_data(Name, Data) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {receive_data, Data}).
 
+receive_gap(Name, Gap) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:cast(Pid, {receive_gap, Gap}).
+
 % callbacks
 init(#state{entity = E} = State) ->
     %io:format("~p.erl STARTED!\n",[?MODULE]),
@@ -65,6 +69,8 @@ handle_call(_, _, State) ->
 
 handle_cast({receive_data, Data}, State) ->
     {noreply, h_receive_data(Data, State)};
+handle_cast({receive_gap, Gap}, State) ->
+    {noreply, h_receive_gap(Gap, State)};
 handle_cast({receive_heartbeat, HB}, State) ->
     {noreply, h_receive_heartbeat(HB, State)};
 handle_cast({update_matched_writers, Proxies}, S) ->
@@ -247,4 +253,32 @@ h_receive_data({Writer, SN, Data},
                                                  SN),
             CFW = lists:map(fun(Change) -> sn_received(Change, SN) end, _CFW),
             State#state{writer_proxies = Others ++ [Proxy#writer_proxy{changes_from_writer = CFW}]}
+    end.
+
+h_receive_gap(#gap{writerGUID = Writer, sn_set = SET},
+               #state{history_cache = Cache, writer_proxies = WP} = State) -> 
+    case [P || #writer_proxy{guid = WGUID} = P <- WP, WGUID == Writer] of
+        [] -> 
+            State;
+        [Selected | _] ->
+            %io:format("GAP processing...for numbers ~p\n", [SET]),
+            %DEBUG_SN_STATES = [ {SN,S} || #change_from_writer{change_key = {_,SN}, status = S} <- Selected#writer_proxy.changes_from_writer],
+            %io:format("Current changes state ~p\n", [DEBUG_SN_STATES]),
+            Others = [P || #writer_proxy{guid = WGUID} = P <- WP, WGUID /= Writer],
+            AddedChanges = lists:foldl(
+                fun (SN, CFW) -> 
+                        add_change_from_writer_if_needed(Selected#writer_proxy.guid,
+                                    CFW,
+                                    SN)
+                end,  
+                Selected#writer_proxy.changes_from_writer, 
+                SET),
+
+            AddedAndMarked = lists:map(fun(#change_from_writer{change_key = {_, SN}} = C) -> 
+                                            case lists:member(SN, SET) of
+                                                true -> C#change_from_writer{status = received};
+                                                false -> C
+                                            end
+                                        end, AddedChanges),
+            State#state{writer_proxies = Others ++ [Selected#writer_proxy{changes_from_writer = AddedAndMarked}]}
     end.
