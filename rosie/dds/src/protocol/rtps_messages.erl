@@ -414,7 +414,7 @@ gen_bitmask(Base, BITMAP_LENGTH, N) ->
     Bit = 128 bsl L_DWORD_shift bsl L_Shift bsr R_Shift.
 
 calc_bitmap(Base, NumBits, Range) ->
-    BITMAP_LENGTH = 32 * (NumBits div 32 + 1),
+    BITMAP_LENGTH = 32 * ((NumBits-1) div 32 + 1),
     %io:format("~p\n",[Length]),
     Bits = <<0:BITMAP_LENGTH>>,
     bit_in_map(Base, BITMAP_LENGTH, Bits, Range).
@@ -720,5 +720,13 @@ acknack_range_test() ->
     io:format("A1 = ~p\n", [A]),
     io:format("A2 = ~p\n", [A_]),
     ?assert(A == A_).
+
+acknack_serialize_32_test() ->
+    A = #acknack{writerGUID = #guId{entityId = ?ENTITYID_UNKNOWN},
+                 final_flag = 1,
+                 readerGUID = #guId{entityId = ?ENTITYID_UNKNOWN},
+                 sn_range = lists:seq(1, 32),
+                 count = 1},
+    ?assertMatch( <<6,3,28,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,32,0,0,0,255,255,255,255,1,0,0,0>>, <<(serialize_acknack(A))/binary>>).
 
 -endif.
