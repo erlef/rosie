@@ -176,7 +176,10 @@ h_manage_goal_request(Msg,
                              callback_handler = {M, Pid},
                              goals_accepted = GA} =
                           S) ->
-    Reply = M:on_new_goal_request(Pid, Msg),
+    Reply = case erlang:function_exported(M, on_new_goal_request, 2) of
+        true -> M:on_new_goal_request(Pid, Msg);
+        false -> AI:accept_goal_reply() % reject as default
+    end,
     case AI:get_responce_code(Reply) of
         0 ->
             {reply, Reply, S};
@@ -249,14 +252,18 @@ h_manage_cancel_request(#action_msgs_cancel_goal_rq{goal_info =
                                goals_accepted = GA,
                                callback_handler = {M, Pid}} =
                             S) ->
-    case maps:get(UUID, GA, not_found) of
-        not_found ->
+    GOAL = maps:get(UUID, GA, not_found),
+    Has_callback = erlang:function_exported(M, on_cancel_goal_request, 2),
+    case {GOAL, Has_callback} of
+        {not_found, _} -> 
             {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_UNKNOWN_GOAL_ID}, S};
-        #goal{status = ?STATUS_CANCELED} ->
+        {#goal{status = ?STATUS_CANCELED}, _}->
             {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_GOAL_TERMINATED}, S};
-        #goal{status = ?STATUS_SUCCEEDED} ->
+        {#goal{status = ?STATUS_SUCCEEDED}, _} ->
             {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_GOAL_TERMINATED}, S};
-        _ ->
+        {_, false} ->
+            {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_REJECTED}, S};
+        {_, true} ->
             case M:on_cancel_goal_request(Pid, R) of
                 accept ->
                     G_INFO = #action_msgs_goal_info{goal_id = UUID},
