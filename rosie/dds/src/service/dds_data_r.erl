@@ -25,7 +25,8 @@ on_change_available(Name, ChangeKey) ->
     gen_server:cast(Pid, {on_change_available, ChangeKey}).
 
 on_change_removed(Name, ChangeKey) ->
-    io:format("on_change_removed/2 Not implemented in ~p\n", [?MODULE]),
+    % DO NOTHING
+    % As a dds_reader we do not notify (for now), the event cming from the cache
     ok.
 
 set_listener(Name, Listener) ->

@@ -47,26 +47,17 @@ init(_) ->
     {ok, #state{ros_node = Node, action_server = ActionServer}}.
 
 % This server only accepts one goal at a time, we reject all the others if goal_id is already set
-handle_call({on_new_goal_request,
-             #example_interfaces_fibonacci_send_goal_rq{goal_id = UUID}},
-            _,
-            #state{goal_id = none} = S) ->
-    io:format("Received goal request with id ~p\n",
-              [UUID#unique_identifier_msgs_u_u_i_d.uuid]),
+handle_call({on_new_goal_request, #example_interfaces_fibonacci_send_goal_rq{goal_id = UUID}},
+            _, #state{goal_id = none} = S) ->
+    io:format("Received goal request with id ~p\n",[UUID#unique_identifier_msgs_u_u_i_d.uuid]),
     {reply, #example_interfaces_fibonacci_send_goal_rp{responce_code = 1}, S};
-handle_call({on_new_goal_request,
-             #example_interfaces_fibonacci_send_goal_rq{goal_id = UUID}},
-            _,
-            S) ->
-    io:format("Rejecting goal request with id ~p\n",
-              [UUID#unique_identifier_msgs_u_u_i_d.uuid]),
+handle_call({on_new_goal_request, #example_interfaces_fibonacci_send_goal_rq{goal_id = UUID}},
+            _, S) ->
+    io:format("Rejecting goal request with id ~p\n", [UUID#unique_identifier_msgs_u_u_i_d.uuid]),
     {reply, #example_interfaces_fibonacci_send_goal_rp{responce_code = 0}, S};
-handle_call({on_cancel_goal_request,
-             #action_msgs_cancel_goal_rq{goal_info = #action_msgs_goal_info{goal_id = UUID}}},
-            _,
-            S) ->
-    io:format("Accepting cancel request for ~p\n",
-              [UUID#unique_identifier_msgs_u_u_i_d.uuid]),
+handle_call({on_cancel_goal_request, #action_msgs_cancel_goal_rq{goal_info = #action_msgs_goal_info{goal_id = UUID}}},
+            _, S) ->
+    io:format("Accepting cancel request for ~p\n", [UUID#unique_identifier_msgs_u_u_i_d.uuid]),
     % Accepting will put the action in cancelling state
     {reply, accept, S}; % use 'reject' atom to reject the cancel request
 handle_call(_, _, S) ->

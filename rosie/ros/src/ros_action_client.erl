@@ -18,17 +18,18 @@
 
 -record(state,
         {node,
-         % module holding interface infos
-         action_interface,
-         % ros clients to serve this action
-         request_goal_client,
-         cancel_goal_client,
-         get_result_client,
-         % ros subscription to remote topics for this action
-         feed_subscription,
-         status_subscription,
-         % user callbacks
-         callback_handler}).
+        % module holding interface infos
+        action_interface,
+        % ros clients to serve this action
+        request_goal_client,
+        cancel_goal_client,
+        get_result_client,
+        % ros subscription to remote topics for this action
+        feed_subscription,
+        status_subscription,
+        % user callbacks
+        callback_handler,
+        goal_id}).
 
 start_link(Node, Action, {CallbackModule, Pid}) ->
     gen_server:start_link(?MODULE,
@@ -117,11 +118,10 @@ terminate( _, #state{request_goal_client = RequestGoalClient,
     ok.
 
 handle_call({wait_for_server, Timeout}, {Caller, _}, S) ->
-    self() ! {wait_for_server_loop, Caller, Timeout, now()},
+    self() ! {wait_for_server_loop, Caller, Timeout,  erlang:monotonic_time(millisecond)},
     {reply, ok, S};
 handle_call({send_goal, GoalRequest}, _, S) ->
-    h_send_goal(GoalRequest, S),
-    {reply, ok, S};
+    {reply, ok, h_send_goal(GoalRequest, S)};
 handle_call({get_result, ResultRequest}, _, S) ->
     h_get_result(ResultRequest, S),
     {reply, ok, S};
@@ -145,12 +145,12 @@ handle_cast({on_service_reply, Msg},
     end,
     {noreply, S};
 handle_cast({on_topic_msg, Msg},
-            #state{action_interface = AI, callback_handler = {M, Pid}} = S) ->
+            #state{action_interface = AI} = S) ->
     case AI:identify_msg(Msg) of
         goal_status_array ->
             {noreply, h_handle_status_update(Msg, S)};
         feedback_message ->
-            M:on_feedback_message(Pid, Msg),
+            h_handle_feedback_message(Msg, S),
             {noreply, S};
         unknow_record ->
             {noreply, S}
@@ -159,7 +159,7 @@ handle_cast(_, S) ->
     {noreply, S}.
 
 handle_info({wait_for_server_loop, Caller, Timeout, Start}, S) ->
-    case timer:now_diff(now(), Start) div 1000 < Timeout of
+    case (erlang:monotonic_time(millisecond) - Start) < Timeout of
         true ->
             case h_server_is_ready(S) of
                 true ->
@@ -181,8 +181,9 @@ h_server_is_ready(#state{request_goal_client = RequestGoalClient,
     and ros_client:service_is_ready(GetResultClient).
 
 h_send_goal(GoalRequest,
-            #state{action_interface = ActionModule, request_goal_client = RequestGoalClient}) ->
-    ros_client:cast(RequestGoalClient, GoalRequest).
+            #state{action_interface = ActionModule, request_goal_client = RequestGoalClient} = S) ->
+    ros_client:cast(RequestGoalClient, GoalRequest),
+    S#state{goal_id = ActionModule:get_goal_id(GoalRequest)}.
 
 h_get_result(ResultRequest, #state{get_result_client = GetResultClient}) ->
     ros_client:cast(GetResultClient, ResultRequest).
@@ -218,3 +219,9 @@ h_handle_status_update(GoalStatusArrayMsg, S) ->
                                  status = N}
             <- GoalStatusArrayMsg#action_msgs_goal_status_array.status_list],
     S.
+
+h_handle_feedback_message(Msg, #state{action_interface= ActionModule, callback_handler = {M, Pid}, goal_id = CURRENT_GOAL_ID}) ->
+    case ActionModule:get_goal_id(Msg) of
+        CURRENT_GOAL_ID -> M:on_feedback_message(Pid, Msg);
+        _ -> ok
+    end.
