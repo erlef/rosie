@@ -105,16 +105,17 @@ init(#state{node = Node,
              feed_subscription = FeedbackSub,
              status_subscription = StatusSub}}.
 
-terminate( _, #state{request_goal_client = RequestGoalClient,
+terminate( _, #state{node = Node,
+                            request_goal_client = RequestGoalClient,
                             cancel_goal_client = CancelGoalClient,
                             get_result_client = GetResultClient,
                             feed_subscription = FeedbackSub,
                             status_subscription = StatusSub} = S) ->
-    ros_node:destroy_subscription(FeedbackSub),
-    ros_node:destroy_subscription(StatusSub),
-    ros_node:destroy_client(RequestGoalClient),
-    ros_node:destroy_client(CancelGoalClient),
-    ros_node:destroy_client(GetResultClient),
+    ros_node:destroy_subscription(Node, FeedbackSub),
+    ros_node:destroy_subscription(Node, StatusSub),
+    ros_node:destroy_client(Node, RequestGoalClient),
+    ros_node:destroy_client(Node, CancelGoalClient),
+    ros_node:destroy_client(Node, GetResultClient),
     ok.
 
 handle_call({wait_for_server, Timeout}, {Caller, _}, S) ->

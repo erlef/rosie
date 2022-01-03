@@ -313,10 +313,10 @@ handle_info({udp, Socket, Ip, Port, Packet}, State) ->
     end,
     {noreply, State}.
 
-close_sockets([]) ->
-    ok;
-close_sockets([{_, Socket, _, _} | TL]) ->
-    gen_udp:close(Socket).
+% close_sockets([]) ->
+%     ok;
+% close_sockets([{_, Socket, _, _} | TL]) ->
+%     gen_udp:close(Socket).
 
 % callback helpers
 open_udp_locators(_, [], S) ->

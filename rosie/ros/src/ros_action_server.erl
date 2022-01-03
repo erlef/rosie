@@ -101,16 +101,17 @@ init(#state{node = Node,
              status_publisher = StatusPub}}.
 
 
-terminate( _, #state{request_goal_service = RequestGoalService,
-                               cancel_goal_service = CancelGoalService,
-                               get_result_service = GetResultService,
-                               feed_publisher = FeedbackPub,
-                               status_publisher = StatusPub} = S) ->
-    ros_node:destroy_publisher(FeedbackPub),
-    ros_node:destroy_publisher(StatusPub),
-    ros_node:destroy_service(RequestGoalService),
-    ros_node:destroy_service(CancelGoalService),
-    ros_node:destroy_service(GetResultService),
+terminate( _, #state{node = Node,
+                            request_goal_service = RequestGoalService,
+                            cancel_goal_service = CancelGoalService,
+                            get_result_service = GetResultService,
+                            feed_publisher = FeedbackPub,
+                            status_publisher = StatusPub} = S) ->
+    ros_node:destroy_publisher(Node, FeedbackPub),
+    ros_node:destroy_publisher(Node, StatusPub),
+    ros_node:destroy_service(Node, RequestGoalService),
+    ros_node:destroy_service(Node, CancelGoalService),
+    ros_node:destroy_service(Node, GetResultService),
     ok.
 
 handle_call({publish_feedback, Feed},
