@@ -18,17 +18,9 @@ start_link() ->
     gen_server:start_link({local, ?LOCAL_SRV}, ?MODULE, [], []).
 
 % callbacks for gen_action_server_listener
-on_new_goal_request(Pid, Msg) ->
-    gen_server:call(Pid, {on_new_goal_request, Msg}).
-
 on_execute_goal(Pid, Goal) ->
     gen_server:cast(Pid, {on_execute_goal, Goal}).
 
-on_cancel_goal_request(Pid, Goal) ->
-    gen_server:call(Pid, {on_cancel_goal_request, Goal}).
-
-on_cancel_goal(Pid, Goal) ->
-    gen_server:cast(Pid, {on_cancel_goal, Goal}).
 
 % callbacks for gen_server
 init(_) ->

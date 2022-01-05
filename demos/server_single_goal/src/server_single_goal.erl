@@ -1,4 +1,4 @@
--module(server_single_action).
+-module(server_single_goal).
 -export([start_link/0]).
 
 -behaviour(gen_action_server_listener).
@@ -71,10 +71,10 @@ handle_cast({on_execute_goal,
     {noreply, S#state{goal_id = UUID}};
 handle_cast({on_cancel_goal, UUID}, #state{action_server = AS} = S) ->
     % Here we can take as much time to stop the action while its in canceling state
-    % Once called ros_action_server:cancel_goal the anction is marked as CANCELED
+    % Once called ros_action_server:cancel_goal(), the action is marked as CANCELED
     ros_action_server:cancel_goal(AS, UUID),
     io:format("Goal was canceled.\n"),
-    % For simpicity we set the id to none to easly stop the loop
+    % For simplicity we set the id to none to easly stop the loop
     {noreply, S#state{goal_id = none}};
 handle_cast(_, S) ->
     {noreply, S}.

@@ -1,4 +1,4 @@
--module(minimal_action_server_sup).
+-module(server_queue_goals_sup).
 
 -behaviour(supervisor).
 
@@ -26,8 +26,8 @@ init([]) ->
           intensity => 0,
           period => 1},
     Server =
-        #{id => minimal_action_server,
-          start => {minimal_action_server, start_link, []},
+        #{id => server_queue_goals,
+          start => {server_queue_goals, start_link, []},
           restart => transient,
           shutdown => 5000,
           type => worker},

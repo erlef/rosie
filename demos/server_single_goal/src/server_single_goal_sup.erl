@@ -1,4 +1,4 @@
--module(server_single_action_sup).
+-module(server_single_goal_sup).
 
 -behaviour(supervisor).
 
@@ -25,14 +25,14 @@ init([]) ->
         #{strategy => one_for_all,
           intensity => 0,
           period => 1},
-    Client =
-        #{id => server_single_action,
-          start => {server_single_action, start_link, []},
+    Server =
+        #{id => server_single_goal,
+          start => {server_single_goal, start_link, []},
           restart => transient,
           shutdown => 5000,
           type => worker},
 
-    ChildSpecs = [Client],
+    ChildSpecs = [Server],
 
     {ok, {SupFlags, ChildSpecs}}.
 

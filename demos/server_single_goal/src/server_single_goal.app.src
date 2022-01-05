@@ -1,0 +1,15 @@
+{application, server_single_goal,
+ [{description, "Example action server"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {server_single_goal_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
