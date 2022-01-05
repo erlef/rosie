@@ -596,7 +596,7 @@ parse_acknack(<<_:6, Final:1, _:1>>,
                 _:32,
                 BitMapBase:32/little,
                 NumBits:32/little,
-                BitMap_and_count/binary>>) when NumBits - BitMapBase =< 250 ->
+                BitMap_and_count/binary>>) when NumBits =< 256 ->
     BITMAP_LENGTH = 32 * (NumBits div 32 + 1),
     <<Set:BITMAP_LENGTH/big, Count:32/little>> = BitMap_and_count,
     #acknack{writerGUID = #guId{entityId = #entityId{key = WriterID, kind = WriterKind}},
@@ -618,18 +618,33 @@ parse_gap(<<_:7, 1:1>>,
                 GapStart:32/little,
                 _:32,
                 BitMapBase:32/little,
+                NumBits:32/little>>) when NumBits == 0 ->
+    #gap{
+        writerGUID = #guId{entityId = #entityId{key = WriterID, kind = WriterKind}},
+        readerGUID = #guId{entityId = #entityId{key = ReaderID, kind = ReaderKind}},
+        sn_set = lists:seq(GapStart, BitMapBase-1)
+    };
+parse_gap(<<_:7, 1:1>>,
+            <<ReaderID:3/binary,
+                ReaderKind:8,
+                WriterID:3/binary,
+                WriterKind:8,                
+                _:32,
+                GapStart:32/little,
+                _:32,
+                BitMapBase:32/little,
                 NumBits:32/little,
-                BitMap/binary>>) when NumBits - BitMapBase =< 250 ->
-        BITMAP_LENGTH = 32 * (NumBits div 32 + 1),
-        <<NumSet:BITMAP_LENGTH/big>> = BitMap,
-        #gap{
-            writerGUID = #guId{entityId = #entityId{key = WriterID, kind = WriterKind}},
-            readerGUID = #guId{entityId = #entityId{key = ReaderID, kind = ReaderKind}},
-            sn_set = lists:seq(GapStart, BitMapBase-1) ++ filter_by_bits(BitMapBase, 
-                                    NumSet,
-                                    BITMAP_LENGTH,
-                                    lists:seq(BitMapBase, BitMapBase + NumBits))
-        }.
+                BitMap/binary>>) when NumBits =< 256 ->
+    BITMAP_LENGTH = 32 * (NumBits div 32 + 1),
+    <<NumSet:BITMAP_LENGTH/big>> = BitMap,
+    #gap{
+        writerGUID = #guId{entityId = #entityId{key = WriterID, kind = WriterKind}},
+        readerGUID = #guId{entityId = #entityId{key = ReaderID, kind = ReaderKind}},
+        sn_set = lists:seq(GapStart, BitMapBase-1) ++ filter_by_bits(BitMapBase, 
+                                NumSet,
+                                BITMAP_LENGTH,
+                                lists:seq(BitMapBase, BitMapBase + NumBits))
+    }.
 
 filter_by_bits(Base, NumSet, BITMAP_LENGTH, List) ->
     [N || N <- List, 0 /= NumSet band gen_bitmask(Base, BITMAP_LENGTH, N)].
