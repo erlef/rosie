@@ -1,0 +1,15 @@
+{application, server_abort_goals,
+ [{description, "Example action server"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {server_abort_goals_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ros
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

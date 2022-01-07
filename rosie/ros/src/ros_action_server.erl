@@ -2,7 +2,7 @@
 -export([start_link/3, destroy/1]).
 
 % API
--export([cancel_goal/2, publish_feedback/2, publish_result/3]).
+-export([abort_goal/2, cancel_goal/2, publish_feedback/2, publish_result/3]).
 
 -behaviour(gen_service_listener).
 
@@ -44,6 +44,10 @@ start_link(Node, Action, {CallbackModule, Pid}) ->
 destroy(Name) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:stop(Pid).
+
+abort_goal(Name, Msg) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:cast(Pid, {abort_goal, Msg}).
 
 cancel_goal(Name, Msg) ->
     [Pid | _] = pg:get_members(Name),
@@ -126,13 +130,16 @@ handle_call({publish_result, GoalID, Result},
                    get_result_service = GetResultService,
                    cached_goal_results = Cached} =
                 S) ->
+    % Always cache the result
+    NewState = S#state{cached_goal_results = [Result | Cached]},
     case [{ClientID, RN} || {ClientID, RN, ID, _} <- GRR, ID == GoalID] of
         [] ->
-            {reply, ok, S#state{cached_goal_results = [Result | Cached]}};
+            {reply, ok, NewState};
         RRL ->
-            [ros_service:send_response(GetResultService, {ClientID, RN, Result})
-             || {ClientID, RN} <- RRL],
-            {reply, ok, publish_goal_status_update(mark_goal_as(GoalID, ?STATUS_SUCCEEDED, S))}
+            [ros_service:send_response(GetResultService, {ClientID, RN, Result}) || {ClientID, RN} <- RRL],
+            NewState = mark_goal_as(GoalID, ?STATUS_SUCCEEDED, NewState),
+            publish_goal_status_update(NewState),
+            {reply, ok, NewState}
     end;
 handle_call({on_client_request, {{ClientId, RequestNumber}, Msg}},
             _,
@@ -149,18 +156,34 @@ handle_call({on_client_request, {{ClientId, RequestNumber}, Msg}},
             {reply, error, S}
     end.
 
+handle_cast({abort_goal, UUID},
+            #state{action_interface = AI, cancel_goal_service = CancelGoalService, goals_accepted = GA} = S) ->
+    case (maps:get(UUID, GA))#goal.status of
+        STATUS when (STATUS == ?STATUS_EXECUTING) or (STATUS == ?STATUS_CANCELING) ->
+            NewState = mark_goal_as(UUID, ?STATUS_ABORTED, S),
+            NewState1 = close_pending_goal_requests(UUID, NewState),
+            publish_goal_status_update(NewState1),
+            {noreply, NewState1};
+        _ -> 
+            {noreply, S}
+    end;
 handle_cast({cancel_goal, UUID},
-            #state{action_interface = AI, cancel_goal_service = CancelGoalService} = S) ->
-    G_INFO = #action_msgs_goal_info{goal_id = UUID},
-    NewState = clear_cache_for_goal(UUID, mark_goal_as(UUID, ?STATUS_CANCELED, S)),
-    {noreply, publish_goal_status_update(NewState)};
+            #state{action_interface = AI, cancel_goal_service = CancelGoalService, goals_accepted = GA} = S) ->
+    case (maps:get(UUID, GA))#goal.status of
+        ?STATUS_CANCELING ->
+            NewState = mark_goal_as(UUID, ?STATUS_CANCELED, S),
+            NewState1 = close_pending_goal_requests(UUID, NewState),
+            publish_goal_status_update(NewState1),   
+            {noreply, NewState1};
+        _ -> 
+            {noreply, S}
+    end;
 handle_cast(_, S) ->
     {noreply, S}.
 
 publish_goal_status_update(#state{action_interface = AI,
                                   status_publisher = S_PUB,
-                                  goals_accepted = GA} =
-                               S) ->
+                                  goals_accepted = GA}) ->
     LIST =
         [#action_msgs_goal_status{goal_info = #action_msgs_goal_info{goal_id = UUID, stamp = T},
                                   status = STATUS}
@@ -168,8 +191,7 @@ publish_goal_status_update(#state{action_interface = AI,
                   time = T,
                   status = STATUS}
                 <- maps:values(GA)],
-    ros_publisher:publish(S_PUB, #action_msgs_goal_status_array{status_list = LIST}),
-    S.
+    ros_publisher:publish(S_PUB, #action_msgs_goal_status_array{status_list = LIST}).
 
 h_manage_goal_request(Msg,
                       #state{action_interface = AI,
@@ -178,7 +200,7 @@ h_manage_goal_request(Msg,
                           S) ->
     Reply = case erlang:function_exported(M, on_new_goal_request, 2) of
         true -> M:on_new_goal_request(Pid, Msg);
-        false -> AI:accept_goal_reply() % reject as default
+        false -> AI:accept_goal_reply() % accept as default
     end,
     case AI:get_responce_code(Reply) of
         0 ->
@@ -191,12 +213,19 @@ h_manage_goal_request(Msg,
                                     #goal{uuid = AI:get_goal_id(Msg),
                                           time = #builtin_interfaces_time{},
                                           status = ?STATUS_EXECUTING}}},
-            {reply, Reply, publish_goal_status_update(NewState)}
+            publish_goal_status_update(NewState),
+            {reply, Reply, NewState}
     end.
 
 clear_cache_for_goal(UUID,
                      #state{action_interface = AI, cached_goal_results = CachedResults} = S) ->
     S#state{cached_goal_results = [R || R <- CachedResults, AI:get_goal_id(R) /= UUID]}.
+
+close_pending_goal_requests(UUID,#state{get_result_service = RS, action_interface = AI, goals_accepted = GA, goals_with_requested_results = GRR} = S) ->
+    GoalState = (maps:get(UUID, GA))#goal.status,
+    {Matching, Others} = lists:partition(fun({_, _, GoalID, _}) -> GoalID == UUID end, GRR),
+    [ros_service:send_response(RS, {ClientID, RN, AI:failed_result_reply(GoalState)}) || {ClientID, RN, _, _} <- Matching],
+    S#state{goals_with_requested_results = Others}.
 
 mark_goal_as(UUID, NewGoalState, #state{goals_accepted = GA} = S) ->
     case maps:get(UUID, GA, not_found) of
@@ -231,7 +260,8 @@ h_manage_result_request(ClientID,
                                   | GRQ]}};
                 [R | _] ->
                     NewS = mark_goal_as(AI:get_goal_id(R), ?STATUS_SUCCEEDED, S),
-                    {reply, R, publish_goal_status_update(NewS)}
+                    publish_goal_status_update(NewS),
+                    {reply, R, NewS}
             end
     end.
 
@@ -257,7 +287,7 @@ h_manage_cancel_request(#action_msgs_cancel_goal_rq{goal_info =
     case {GOAL, Has_callback} of
         {not_found, _} -> 
             {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_UNKNOWN_GOAL_ID}, S};
-        {#goal{status = ?STATUS_CANCELED}, _}->
+        {#goal{status = ?STATUS_CANCELED}, _} ->
             {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_GOAL_TERMINATED}, S};
         {#goal{status = ?STATUS_SUCCEEDED}, _} ->
             {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_GOAL_TERMINATED}, S};
@@ -268,10 +298,9 @@ h_manage_cancel_request(#action_msgs_cancel_goal_rq{goal_info =
                 accept ->
                     G_INFO = #action_msgs_goal_info{goal_id = UUID},
                     M:on_cancel_goal(Pid, UUID),
-                    {reply,
-                     #action_msgs_cancel_goal_rp{return_code = ?ERROR_NONE,
-                                                 goals_canceling = [G_INFO]},
-                     publish_goal_status_update(mark_goal_as(UUID, ?STATUS_CANCELING, S))};
+                    NewS = mark_goal_as(UUID, ?STATUS_CANCELING, S),
+                    publish_goal_status_update(NewS),
+                    {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_NONE, goals_canceling = [G_INFO]}, NewS};
                 reject ->
                     {reply, #action_msgs_cancel_goal_rp{return_code = ?ERROR_REJECTED}, S};
                 _ ->
