@@ -153,7 +153,7 @@ start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
                 NodeID,
                 {rcl_interfaces_describe_parameters_srv, NodeNamePrefix},
                 Qos_profile,
-                {?MODULE, NodeID}
+                {ros_node, NodeID}
             ]
         ),
     {ok, _} =
@@ -163,7 +163,7 @@ start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
                 NodeID,
                 {rcl_interfaces_get_parameter_types_srv, NodeNamePrefix},
                 Qos_profile,
-                {?MODULE, NodeID}
+                {ros_node, NodeID}
             ]
         ),
     {ok, _} =
@@ -173,7 +173,7 @@ start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
                 NodeID,
                 {rcl_interfaces_get_parameters_srv, NodeNamePrefix},
                 Qos_profile,
-                {?MODULE, NodeID}
+                {ros_node, NodeID}
             ]
         ),
     {ok, _} =
@@ -183,7 +183,7 @@ start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
                 NodeID,
                 {rcl_interfaces_list_parameters_srv, NodeNamePrefix},
                 Qos_profile,
-                {?MODULE, NodeID}
+                {ros_node, NodeID}
             ]
         ),
     {ok, _} =
@@ -193,7 +193,7 @@ start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
                 NodeID,
                 {rcl_interfaces_set_parameters_srv, NodeNamePrefix},
                 Qos_profile,
-                {?MODULE, NodeID}
+                {ros_node, NodeID}
             ]
         ),
     {ok, _} =
@@ -203,7 +203,7 @@ start_up_param_topics_and_services({ros_node, NodeName} = NodeID) ->
                 NodeID,
                 {rcl_interfaces_set_parameters_atomically_srv, NodeName ++ "/"},
                 Qos_profile,
-                {?MODULE, NodeID}
+                {ros_node, NodeID}
             ]
         ),
     Publishers = [
