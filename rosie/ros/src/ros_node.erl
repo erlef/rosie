@@ -297,7 +297,7 @@ handle_call({destroy_subscription, Sub}, _, #state{subscriptions = Subscriptions
     ros_context:update_ros_discovery(),
     {reply, ok, S#state{subscriptions = [ S || S <- Subscriptions, S /=  Sub]}};
 handle_call({destroy_publisher, Pub}, _, #state{publishers = Publishers} = S) ->
-    ros_publication:destroy(Pub),
+    ros_publisher:destroy(Pub),
     ros_context:update_ros_discovery(),
     {reply, ok, S#state{publishers = [ P || P <- Publishers, P /=  Pub]}};
 handle_call({destroy_client, Client}, _, #state{clients = Clients} = S) ->

@@ -82,13 +82,16 @@ handle_cast({on_data_available, {Reader, ChangeKey}}, S) ->
     {noreply, S}.
 
 % HELPERS
-% 
-h_handle_data(Reader, ChangeKey, #state{msg_module = raw, user_process = {M, Pid}}) ->
-    Change = dds_data_r:read(Reader, ChangeKey),
-    SerializedPayload = Change#cacheChange.data,
-    M:on_topic_msg(Pid, SerializedPayload);
+
 h_handle_data(Reader, ChangeKey, #state{msg_module = MsgModule, user_process = {M, Pid}}) ->
-    Change = dds_data_r:read(Reader, ChangeKey),
-    SerializedPayload = Change#cacheChange.data,
-    {Parsed, _} = MsgModule:parse(SerializedPayload),
-    M:on_topic_msg(Pid, Parsed).
+    case {dds_data_r:read(Reader, ChangeKey), MsgModule} of
+        {not_found, _} -> 
+            io:format("[ROS_SUBSCRIPTION]: could not find change in cache!\n");
+        {Change, raw} ->
+            SerializedPayload = Change#cacheChange.data,
+            M:on_topic_msg(Pid, SerializedPayload);
+        {Change, _} ->
+            SerializedPayload = Change#cacheChange.data,
+            {Parsed, _} = MsgModule:parse(SerializedPayload),
+            M:on_topic_msg(Pid, Parsed)
+    end.

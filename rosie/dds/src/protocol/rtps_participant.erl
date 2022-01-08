@@ -5,7 +5,7 @@
 
 -export([start_link/0, get_spdp_writer_config/1, get_spdp_reader_config/1,
          send_to_all_readers/2, get_discovered_participants/1, get_info/1, start_discovery/2,
-         on_change_available/2, on_change_removed/2, stop_discovery/1]).
+         on_change_available/2, on_change_removed/2, stop_discovery/1, stop_receiver/1]).
 %set_built_in_endpoints/2,
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
@@ -35,6 +35,9 @@ start_discovery(Pid, EndPointSet) ->
 
 stop_discovery(Pid) ->
     gen_server:call(Pid, stop_discovery).
+
+stop_receiver(Pid) ->
+    gen_server:call(Pid, stop_receiver).
 
 send_to_all_readers(Pid, Msg) ->
     gen_server:cast(Pid, {send_to_all_readers, Msg}).
@@ -79,6 +82,8 @@ handle_call(get_discovered_participants, _, State) ->
     {reply, h_get_discovered_participants(State), State};
 handle_call(stop_discovery, _, State) ->
     {reply, h_stop_discovery(State), State};
+handle_call(stop_receiver, _, #state{ participant = #participant{guid = ID}} = S) ->
+    {reply, rtps_receiver:stop({receiver_of,ID#guId.prefix}), S};
 handle_call(_, _, State) ->
     {reply, ok, State}.
 

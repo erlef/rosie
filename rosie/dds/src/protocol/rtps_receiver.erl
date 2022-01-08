@@ -8,7 +8,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0, open_unicast_locators/2, get_local_locators/1,
-         open_multicast_locators/2]).
+         open_multicast_locators/2,stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -include_lib("dds/include/rtps_structure.hrl").
@@ -257,17 +257,17 @@ analize(GuidPrefix, Packet, {Ip, Port}) ->
                              port = ?LOCATOR_PORT_INVALID}],
                haveTimestamp = false,
                timestamp = ?TIME_INVALID},
-    % 
-    sub_msg_parsing_loop(State, PayLoad).
-    % or
-    % do not interpret possible loopback messages:
-    % NOTE: This forbids communications between endpoints of the same dds participant
-    % case GuidPrefix /= SourceGuidPrefix of
-    %     true ->
-    %         sub_msg_parsing_loop(State, PayLoad);
-    %     false ->
-    %         ok
-    %end.
+
+    % Do not interpret possible loopback messages:
+    % NOTE: 
+    % This forbids communications between endpoints in the same dds participant (Virtual Machine)
+    % Communication inside one participant should be possible but should never rely on loopback UDP datagrams
+    case GuidPrefix /= SourceGuidPrefix of
+        true ->
+            sub_msg_parsing_loop(State, PayLoad);
+        false ->
+            ok
+    end.
 
 % API
 start_link() ->
@@ -285,6 +285,10 @@ open_multicast_locators(Name, LocatorList) ->
     [Pid | _] = pg:get_members(Name),
     gen_server:cast(Pid, {open_multicast_locators, LocatorList}).
 
+stop(Name) ->
+    [Pid | _] = pg:get_members(Name),
+    gen_server:call(Pid, stop).
+
 % call backs
 init(State) ->
     P = rtps_participant:get_info(participant),
@@ -294,31 +298,32 @@ init(State) ->
     S2 = open_udp_locators(multicast, P#participant.defaultMulticastLocatorList, S1),
     {ok, S2#state{destGuidPrefix = P#participant.guid#guId.prefix}}.
 
-handle_call(get_local_locators, _, State) ->
-    {reply, h_get_local_locators(State), State};
-handle_call(_, _, State) ->
-    {reply, ok, State}.
+handle_call(get_local_locators, _, S) ->
+    {reply, h_get_local_locators(S), S};
+handle_call(stop, _, S) ->
+    close_sockets(S#state.openedSockets),
+    {reply, ok, S#state{openedSockets = []}};
+handle_call(_, _, S) ->
+    {reply, ok, S}.
 
 handle_cast({open_unicast_locators, List}, State) ->
     {noreply, open_udp_locators(unicast, List, State)};
 handle_cast({open_multicast_locators, List}, State) ->
     {noreply, open_udp_locators(multicast, List, State)}.
 
-handle_info({udp, Socket, Ip, Port, Packet}, State) ->
-    case rtps_messages:is_rtps_packet(Packet) of
+handle_info({udp, Socket, Ip, Port, Packet}, #state{openedSockets = OS} = S) ->
+    IsSocketValid = lists:any(fun({_,Socket,_,_}) -> true; (_) -> false end, OS),
+    case IsSocketValid and rtps_messages:is_rtps_packet(Packet) of
         true ->
-            analize(State#state.destGuidPrefix, Packet, {Ip, Port});
+            analize(S#state.destGuidPrefix, Packet, {Ip, Port});
         false ->
-            io:format("Receiver: Bad packet\n")
+            io:format("[RTPS_RECEIVER]: Bad packet\n")
     end,
-    {noreply, State}.
+    {noreply, S}.
 
-% close_sockets([]) ->
-%     ok;
-% close_sockets([{_, Socket, _, _} | TL]) ->
-%     gen_udp:close(Socket).
 
 % callback helpers
+
 open_udp_locators(_, [], S) ->
     S;
 open_udp_locators(unicast,
@@ -354,3 +359,8 @@ h_get_local_locators(#state{openedSockets =
                ip = I,
                port = P}}
      || {Type, S, P, I} <- Sockets].
+
+close_sockets([]) ->
+    ok;
+close_sockets([{_, Socket, _, _} | TL]) ->
+    gen_udp:close(Socket).

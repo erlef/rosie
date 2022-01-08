@@ -137,9 +137,9 @@ handle_call({publish_result, GoalID, Result},
             {reply, ok, NewState};
         RRL ->
             [ros_service:send_response(GetResultService, {ClientID, RN, Result}) || {ClientID, RN} <- RRL],
-            NewState = mark_goal_as(GoalID, ?STATUS_SUCCEEDED, NewState),
-            publish_goal_status_update(NewState),
-            {reply, ok, NewState}
+            NewState1 = mark_goal_as(GoalID, ?STATUS_SUCCEEDED, NewState),
+            publish_goal_status_update(NewState1),
+            {reply, ok, NewState1}
     end;
 handle_call({on_client_request, {{ClientId, RequestNumber}, Msg}},
             _,
