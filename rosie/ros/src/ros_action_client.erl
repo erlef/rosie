@@ -133,14 +133,14 @@ handle_call(_, _, S) ->
     {reply, ok, S}.
 
 handle_cast({on_service_reply, Msg},
-            #state{action_interface = AI, callback_handler = {M, Pid}} = S) ->
+            #state{action_interface = AI, callback_handler = { M, Pid} = CA} = S) ->
     case AI:identify_msg(Msg) of
         send_goal_rp ->
             M:on_send_goal_reply(Pid, Msg);
         get_result_rp ->
             M:on_get_result_reply(Pid, Msg);
         cancel_goal_rp ->
-            M:on_cancel_goal_reply(Pid, Msg);
+            h_handle_cancel_goal_reply(Msg, CA);
         _ ->
             io:format("[ROS_ACTION_CLIENT]: BAD MSG RECEIVED FROM SERVICE\n")
     end,
@@ -222,7 +222,13 @@ h_handle_status_update(GoalStatusArrayMsg, S) ->
     S.
 
 h_handle_feedback_message(Msg, #state{action_interface= ActionModule, callback_handler = {M, Pid}, goal_id = CURRENT_GOAL_ID}) ->
-    case ActionModule:get_goal_id(Msg) of
-        CURRENT_GOAL_ID -> M:on_feedback_message(Pid, Msg);
+    case {erlang:function_exported(M, on_feedback_message, 2), ActionModule:get_goal_id(Msg)} of
+        {true, CURRENT_GOAL_ID} -> M:on_feedback_message(Pid, Msg);
         _ -> ok
+    end.
+
+h_handle_cancel_goal_reply(Msg, { M, Pid}) -> 
+    case erlang:function_exported(M, on_cancel_goal_reply, 2) of
+        true -> M:on_cancel_goal_reply(Pid, Msg);
+        false -> ok
     end.

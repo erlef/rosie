@@ -68,11 +68,15 @@ handle_cast({on_get_result_reply,
     io:format("Result received: ~p\n", [Seq]),
     {noreply, S};
 handle_cast({on_cancel_goal_reply,
-             #action_msgs_cancel_goal_rp{return_code = Code, goals_canceling = Seq}},
+             #action_msgs_cancel_goal_rp{return_code = 0, goals_canceling = Seq}},
             S) ->
-    io:format("Cancel operation returned: ~p \nGoals that are being cancelled:\n", [Code]),
-    [io:format("\t~p\n", [ID])
-     || #action_msgs_goal_info{goal_id = #unique_identifier_msgs_u_u_i_d{uuid = ID}} <- Seq],
+    io:format("Cancel operation succeded\nGoals that are being cancelled:\n"),
+    [io:format("\t~p\n", [ID]) || #action_msgs_goal_info{goal_id = #unique_identifier_msgs_u_u_i_d{uuid = ID}} <- Seq],
+    {noreply, S};
+handle_cast({on_cancel_goal_reply,
+             #action_msgs_cancel_goal_rp{return_code = 1}},
+            S) ->
+    io:format("Goal failed to cancel\n"),
     {noreply, S};
 handle_cast({on_feedback_message,
              #example_interfaces_fibonacci_feedback_message{sequence = Seq}},
