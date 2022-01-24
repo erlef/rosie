@@ -22,7 +22,7 @@ on_client_request(Pid, {_, R}) ->
     gen_server:call(Pid, {handle_request, R}).
 
 init(S) ->
-    Node = ros_context:create_node("minimal_server"),
+    Node = ros_context:create_node("minimal_service"),
 
     Service =
         ros_node:create_service(Node, example_interfaces_add_two_ints_srv, {?MODULE, self()}),
