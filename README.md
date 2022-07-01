@@ -1,4 +1,8 @@
-# ROSIE
+PLEASE NOTE: This project is now developed under the [ROSiE-PROJECT](https://github.com/rosie-project) organisation.
+
+This repository is no more mantained.
+
+#  [OLD] ROSIE
 
 Prototype for a ROS2 implementation in pure Erlang.
 
